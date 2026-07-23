@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">app-pos</string>
+    <string name="pos_hello">POS — Veresiye (XML)</string>
+    <string name="pos_hello2">POS — Veresiye Deneme Texti</string>
+</resources>

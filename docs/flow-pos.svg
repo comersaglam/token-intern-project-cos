@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="1360" viewBox="0 0 1180 1360" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#37474f"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2e7d32"/>
+    </marker>
+    <marker id="arrowP" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#8e24aa"/>
+    </marker>
+  </defs>
+  <style>
+    .title  { font-size: 22px; font-weight: 700; fill: #263238; }
+    .colhdr { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+    .step   { font-size: 12px; font-weight: 700; }
+    .sub    { font-size: 10.5px; fill: #546e7a; }
+    .lbl    { font-size: 10.5px; fill: #37474f; }
+    .note   { font-size: 10px; fill: #78909c; }
+    .todo   { font-size: 9.5px; fill: #ad1457; font-weight: 700; }
+    .num    { font-size: 12px; font-weight: 700; fill: #ffffff; }
+    .f      { stroke: #37474f; stroke-width: 1.6; fill: none; }
+    .fg     { stroke: #2e7d32; stroke-width: 1.6; fill: none; }
+    .fp     { stroke: #8e24aa; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  </style>
+
+  <rect x="0" y="0" width="1180" height="1360" fill="#fafafa"/>
+  <text x="40" y="40" class="title">Flow — Veresiye ödemesi (POS → Backend → Müşteri app)</text>
+  <text x="40" y="60" class="note">Sol sütun = Flow A (app-pos, esnaf) · Sağ sütun = Flow B (app-mobile, müşteri) · aralarında "devir" (QR/NFC TBD)</text>
+
+  <!-- Sütun başlıkları -->
+  <rect x="30" y="80" width="540" height="34" rx="6" fill="#e3f2fd" stroke="#1976d2"/>
+  <text x="300" y="103" text-anchor="middle" class="colhdr" fill="#0d47a1">FLOW A · app-pos (ESNAF)</text>
+  <rect x="610" y="80" width="540" height="34" rx="6" fill="#f3e5f5" stroke="#8e24aa"/>
+  <text x="880" y="103" text-anchor="middle" class="colhdr" fill="#6a1b9a">FLOW B · app-mobile (MÜŞTERİ)</text>
+
+  <!-- ======================= FLOW A (SOL) ======================= -->
+  <!-- helper: her adım kutusu numaralı -->
+
+  <!-- 0 auth -->
+  <rect x="60" y="130" width="480" height="40" rx="8" fill="#eceff1" stroke="#90a4ae"/>
+  <text x="80" y="147" class="step">ÖN KOŞUL · Esnaf cihaz auth OK (sessiz access token)</text>
+  <text x="80" y="163" class="sub">cihaz kaydı bir kez yapıldı → her açılış sessiz token</text>
+
+  <!-- 1 -->
+  <circle cx="80" cy="205" r="12" fill="#1976d2"/><text x="80" y="209" text-anchor="middle" class="num">1</text>
+  <rect x="100" y="188" width="440" height="42" rx="8" fill="#e3f2fd" stroke="#1976d2"/>
+  <text x="116" y="206" class="step">Yeni işlem: tutar gir (ör. 50 TL ekmek)</text>
+  <text x="116" y="222" class="sub">amountMinor = 5000 (kuruş)</text>
+
+  <!-- 2 -->
+  <circle cx="80" cy="270" r="12" fill="#1976d2"/><text x="80" y="274" text-anchor="middle" class="num">2</text>
+  <rect x="100" y="250" width="440" height="52" rx="8" fill="#e3f2fd" stroke="#1976d2"/>
+  <text x="116" y="270" class="step">Ödeme yöntemi ekranı</text>
+  <text x="116" y="288" class="sub">[ Kart ]  [ Yemek Kartı ]  [ Nakit ]  [ VERESİYE ◄ seçildi ]</text>
+
+  <!-- 3 karar: müşteri tanımlama -->
+  <path class="f" d="M300,302 L300,322" marker-end="url(#arrow)"/>
+  <polygon points="300,326 470,378 300,430 130,378" fill="#fff3e0" stroke="#ef6c00"/>
+  <text x="300" y="368" text-anchor="middle" class="step" fill="#e65100">Müşteri nasıl tanımlanacak?</text>
+  <text x="300" y="386" text-anchor="middle" class="sub">Default: credential al (QR/NFC — TBD)</text>
+  <text x="300" y="402" text-anchor="middle" class="sub">Alt: [ Elle gir ] (no credential)</text>
+
+  <!-- 3A credential -->
+  <path class="f" d="M215,410 L150,410 L150,450" marker-end="url(#arrow)"/>
+  <text x="120" y="428" class="lbl">credential</text>
+  <rect x="60" y="452" width="215" height="72" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
+  <text x="74" y="472" class="step" fill="#4527a0">(A) Müşteri app'inden</text>
+  <text x="74" y="489" class="sub">customerId + izin alınır</text>
+  <text x="74" y="504" class="sub">→ CLAIMED müşteri</text>
+  <text x="74" y="518" class="todo">yöntem TBD: QR / NFC</text>
+
+  <!-- 3B elle -->
+  <path class="f" d="M385,410 L450,410 L450,450" marker-end="url(#arrow)"/>
+  <text x="410" y="428" class="lbl">elle gir</text>
+  <rect x="325" y="452" width="215" height="72" rx="8" fill="#fff8e1" stroke="#f9a825"/>
+  <text x="339" y="472" class="step" fill="#e65100">(B) Esnaf sadece isim</text>
+  <text x="339" y="489" class="sub">"Ahmet Amca" yazar</text>
+  <text x="339" y="504" class="sub">→ UNCLAIMED müşteri</text>
+  <text x="339" y="518" class="todo">app'i yok; sonra claim</text>
+
+  <!-- 4 onay -->
+  <path class="f" d="M150,524 L150,548 L280,548" marker-end="url(#arrow)"/>
+  <path class="f" d="M450,524 L450,548 L320,548" marker-end="url(#arrow)"/>
+  <circle cx="80" cy="585" r="12" fill="#c62828"/><text x="80" y="589" text-anchor="middle" class="num">!</text>
+  <rect x="100" y="562" width="440" height="52" rx="8" fill="#ffebee" stroke="#c62828"/>
+  <text x="116" y="582" class="step" fill="#b71c1c">ONAY: "Ahmet · 50 TL · DEBT — onaylıyor musun?"</text>
+  <text x="116" y="600" class="sub">para işi → confirmation ŞART (yanlış anlama sessizce borç yazmasın)</text>
+
+  <!-- 5 domain -->
+  <circle cx="80" cy="655" r="12" fill="#689f38"/><text x="80" y="659" text-anchor="middle" class="num">5</text>
+  <rect x="100" y="634" width="440" height="46" rx="8" fill="#f1f8e9" stroke="#689f38"/>
+  <text x="116" y="653" class="step" fill="#33691e">core-domain: ledger kuralı geçerli mi?</text>
+  <text x="116" y="669" class="sub">amount &gt; 0 · tip DEBT · (saf Kotlin doğrulama)</text>
+
+  <!-- 6 data -->
+  <circle cx="80" cy="725" r="12" fill="#ef6c00"/><text x="80" y="729" text-anchor="middle" class="num">6</text>
+  <rect x="100" y="698" width="440" height="70" rx="8" fill="#fff3e0" stroke="#ef6c00"/>
+  <text x="116" y="717" class="step" fill="#e65100">core-data / Repository</text>
+  <text x="116" y="734" class="sub">→ Room'a YAZ (Transaction, append-only) — ANINDA, offline OK</text>
+  <text x="116" y="750" class="sub">→ outbox kuyruğuna ekle (transaction_id ile)</text>
+  <text x="116" y="764" class="sub">ekran: "kaydedildi ✓" · esnaf yeni bakiyeyi görür</text>
+
+  <!-- 7 sync -->
+  <circle cx="80" cy="820" r="12" fill="#c2185b"/><text x="80" y="824" text-anchor="middle" class="num">7</text>
+  <rect x="100" y="788" width="440" height="80" rx="8" fill="#fce4ec" stroke="#c2185b"/>
+  <text x="116" y="807" class="step" fill="#880e4f">Sync Engine (WorkManager · internet varken)</text>
+  <text x="116" y="824" class="sub">→ outbox'tan al → :core-network POST /transactions</text>
+  <text x="116" y="840" class="sub">→ idempotency-key header · 200 OK → outbox'tan sil</text>
+  <text x="116" y="856" class="sub">→ hata → retry (transaction_id → çift işlenmez)</text>
+
+  <!-- alacaklar yan kutu -->
+  <rect x="100" y="892" width="440" height="58" rx="8" fill="#e8f5e9" stroke="#2e7d32" stroke-dasharray="4 3"/>
+  <text x="116" y="911" class="step" fill="#1b5e20">ESNAF: alacakları görür (ledger'dan okunur)</text>
+  <text x="116" y="928" class="sub">müşteri bazlı veya genel toplam · bakiye = hareketlerin toplamı</text>
+  <text x="116" y="943" class="sub">tüm veri lokalde saklanır, sürekli cloud ile senkronize</text>
+
+  <!-- ======================= BACKEND (ortada alt) ======================= -->
+  <rect x="330" y="990" width="520" height="86" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="590" y="1012" text-anchor="middle" class="step" fill="#1b5e20">BACKEND — source of truth</text>
+  <text x="590" y="1030" text-anchor="middle" class="sub">ledger'a ekler · reconcile · müşteri CLAIMED ise FCM push ("yeni borç")</text>
+  <text x="590" y="1046" text-anchor="middle" class="sub">GÜN SONU: POS lokal toplam == backend toplam? → eşitlik/reconciliation raporu</text>
+  <text x="590" y="1063" text-anchor="middle" class="todo">TODO hesap logic'i: enflasyon/günlük artış · faiz (mikrokredi) · vade — SQL field'ları önden</text>
+
+  <!-- 7 (Sync) -> backend: kutunun sağ kenarından çıkıp backend üstüne -->
+  <path class="fg" d="M540,828 L570,828 L570,988" marker-end="url(#arrowGreen)"/>
+  <text x="576" y="900" class="lbl" fill="#2e7d32">POST (giden)</text>
+
+  <!-- ======================= FLOW B (SAĞ) ======================= -->
+  <!-- devir oku: POS credential (A) -> Flow B başı (B1) -->
+  <path class="fp" d="M275,488 L590,488 L590,153 L650,153" marker-end="url(#arrowP)"/>
+  <text x="300" y="480" class="lbl" fill="#8e24aa">QR/NFC "devir" → müşteri okutur → Flow B (B1) başlar</text>
+
+  <!-- B1 -->
+  <circle cx="632" cy="150" r="12" fill="#8e24aa"/><text x="632" y="154" text-anchor="middle" class="num">1</text>
+  <rect x="652" y="130" width="480" height="46" rx="8" fill="#f3e5f5" stroke="#8e24aa"/>
+  <text x="668" y="150" class="step" fill="#6a1b9a">Müşteri QR/NFC okutur (ödeme/tanımlama)</text>
+  <text x="668" y="166" class="sub">app VAR mı? → izin ister (auth'luysa) · app YOK mu? ↓</text>
+
+  <!-- B2 karar app var/yok -->
+  <path class="fp" d="M880,176 L880,196" marker-end="url(#arrowP)"/>
+  <polygon points="880,200 1010,244 880,288 750,244" fill="#f3e5f5" stroke="#8e24aa"/>
+  <text x="880" y="240" text-anchor="middle" class="step" fill="#6a1b9a">app kurulu mu?</text>
+  <text x="880" y="257" text-anchor="middle" class="sub">var → borç sayfası · yok → Play Store</text>
+
+  <!-- B2-yok -> playstore -->
+  <path class="fp" d="M795,265 L720,265 L720,300" marker-end="url(#arrowP)"/>
+  <text x="700" y="283" class="lbl" fill="#8e24aa">yok</text>
+  <rect x="652" y="302" width="215" height="60" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
+  <text x="666" y="322" class="step" fill="#4527a0">Google Play → indir</text>
+  <text x="666" y="339" class="sub">ilk kurulum akışı ↓</text>
+  <text x="666" y="354" class="sub">(deep link ile geri döner)</text>
+
+  <!-- ilk kurulum: telefon+otp -->
+  <path class="fp" d="M760,362 L760,392" marker-end="url(#arrowP)"/>
+  <rect x="652" y="394" width="215" height="72" rx="8" fill="#fff8e1" stroke="#f9a825"/>
+  <text x="666" y="414" class="step" fill="#e65100">İlk kurulum</text>
+  <text x="666" y="431" class="sub">telefon → OTP (arka arkaya)</text>
+  <text x="666" y="447" class="sub">sonra kullanıcı adı girer</text>
+  <text x="666" y="461" class="todo">kayıt = giriş (düşük friction)</text>
+
+  <!-- B2-var -> borç sayfası: sağdan aşağı, kutunun üst-sağ kenarına -->
+  <path class="fp" d="M1010,244 L1080,244 L1080,470 L1000,470 L1000,478" marker-end="url(#arrowP)"/>
+  <text x="1030" y="262" class="lbl" fill="#8e24aa">var</text>
+  <!-- ilk kurulum -> borç sayfası: kutunun üst kenarına -->
+  <path class="fp" d="M760,466 L760,478" marker-end="url(#arrowP)"/>
+
+  <!-- B3 borç sayfası -->
+  <rect x="652" y="480" width="480" height="70" rx="8" fill="#f3e5f5" stroke="#8e24aa"/>
+  <text x="668" y="500" class="step" fill="#6a1b9a">"Toplam borcum" sayfası</text>
+  <text x="668" y="517" class="sub">balance = backend ledger toplamı · gelen QR ise "otomatik ekle" onayı</text>
+  <text x="668" y="533" class="sub">[ ÖDE ]   [ Ayarlar ]   [ Borç/ödeme listesi ]</text>
+
+  <!-- B4 öde -->
+  <path class="fp" d="M760,550 L760,580" marker-end="url(#arrowP)"/>
+  <rect x="652" y="582" width="230" height="86" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
+  <text x="666" y="602" class="step" fill="#4527a0">ÖDE</text>
+  <text x="666" y="619" class="sub">şimdilik: kart bilgisi ile</text>
+  <text x="666" y="635" class="sub">→ backend PAYMENT (-)</text>
+  <text x="666" y="651" class="todo">TODO: satıcı onaylı offline</text>
+  <text x="666" y="663" class="todo">ödeme ("ödedim"→esnafa onay)</text>
+
+  <!-- B5 ayarlar -->
+  <path class="fp" d="M900,550 L900,580" marker-end="url(#arrowP)"/>
+  <rect x="902" y="582" width="230" height="86" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="916" y="602" class="step" fill="#1b5e20">Ayarlar</text>
+  <text x="916" y="619" class="sub">isim · kart ekle/çıkar</text>
+  <text x="916" y="635" class="sub">borç & ödeme listesi</text>
+  <text x="916" y="651" class="sub">(gelen QR otomatik ekle</text>
+  <text x="916" y="663" class="sub"> onay ile)</text>
+
+  <!-- B öde -> backend -->
+  <path class="fg" d="M760,668 L760,720 L610,720 L610,990" marker-end="url(#arrowGreen)"/>
+  <text x="620" y="712" class="lbl" fill="#2e7d32">PAYMENT (giden)</text>
+
+  <!-- Backend -> müşteri FCM (claimed): borç sayfasının sağ kenarına -->
+  <path class="fp" d="M850,1033 L1155,1033 L1155,520 L1134,520" marker-end="url(#arrowP)"/>
+  <text x="870" y="1027" class="lbl" fill="#8e24aa">FCM: "yeni borç" (CLAIMED müşteriye) → borç sayfası güncellenir</text>
+
+  <!-- Alt açıklama -->
+  <rect x="30" y="1110" width="1120" height="210" rx="8" fill="#ffffff" stroke="#cfd8dc"/>
+  <text x="46" y="1134" class="colhdr" fill="#37474f">NOTLAR</text>
+  <text x="46" y="1158" class="sub">• Yeşil oklar = backend'e GİDEN çağrılar (app başlatır). Mor kesikli = FCM/deep-link "haber verme" (backend dinletmez, dürter).</text>
+  <text x="46" y="1176" class="sub">• Veri kuralı: her hareket append-only. Bakiye hiçbir yerde tek sayı olarak tutulmaz; hareketlerin toplamıdır.</text>
+  <text x="46" y="1194" class="sub">• POS lokal-first: adım 6'da yazma anında biter (offline OK); adım 7 senkronizasyonu arkaya alır. Gün sonu reconciliation eşitliği doğrular.</text>
+  <text x="46" y="1212" class="sub">• Claim mantığı: UNCLAIMED (esnaf isimle açtı) → müşteri aynı telefonla girince backend eski borcu hesaba CLAIM eder.</text>
+  <text x="46" y="1236" class="todo">TODO (SQL field'ları önden tasarım için — MD'de detay):</text>
+  <text x="60" y="1254" class="sub">- Customer: customerId, displayName, phone?, claimStatus(UNCLAIMED/CLAIMED), authedFlag</text>
+  <text x="60" y="1270" class="sub">- Hesap logic'i (backend, ileride): enflasyon/günlük artış oranı, faiz (mikrokredi), geri ödeme vadesi — hesaplama alanları</text>
+  <text x="60" y="1286" class="sub">- Ödeme yöntemi kayıtları (kart token'ları), reconciliation raporu (gün sonu eşitlik), sync batch + idempotency-key</text>
+  <text x="60" y="1302" class="sub">- Credential yöntemi (QR/NFC) kararı verilecek; her ikisi de "müşteri app'inden customerId + auth devri" soyutlamasına oturur</text>
+</svg>

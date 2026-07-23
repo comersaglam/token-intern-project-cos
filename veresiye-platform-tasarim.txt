@@ -1,0 +1,523 @@
+================================================================================
+VERESİYE DİJİTAL TAKİP SİSTEMİ — MİMARİ VE REPO TASARIMI
+================================================================================
+Token stajı projesi için tasarım notları
+Stack: Kotlin / Android (XML views) + Android Studio
+--------------------------------------------------------------------------------
+
+
+================================================================================
+1. GENEL MİMARİ
+================================================================================
+
+Sistem üç ana parçadan oluşur. POS app ve müşteri app'i "client" (frontend)
+tarafındadır; bunların KENDİNE AİT AYRI BİR BACKEND'İ YOKTUR. İkisi de tek bir
+backend'e (senin "cloud" dediğin şey) API üzerinden konuşur.
+
+Yani "pos backend" + "app backend" + "cloud" diye üç ayrı şey değildir; bunların
+üçü aynı backend servisidir.
+
+
+        ESNAF TARAFI                      MÜŞTERİ TARAFI
+   +----------------------+         +------------------+
+   |  app-pos             |         |  app-mobile      |
+   |  (POS cihazı,        |         |  (login/kontrol/ |
+   |   Kotlin/Android)    |         |   ödeme)         |
+   +----------+-----------+         +--------+---------+
+              |      HTTPS (REST/gRPC)         |
+              +---------------+----------------+
+                              v
+                    +---------------------+
+                    |   Backend API        |  <- senin "cloud"un
+                    |   auth, veresiye     |
+                    |   kayıtları, ödeme,  |
+                    |   senkronizasyon     |
+                    +----------+----------+
+                               v
+                         +----------+
+                         | Database |  (backend'in sahibi olduğu tek DB)
+                         +----------+
+
+
+NET CEVAPLAR:
+
+- "Frontend ve backend aynı anda mı yazılıyor?"
+  Mobil/POS app'te "frontend/backend" ayrımı yoktur. App zaten kendi içinde
+  UI + iş mantığı + API çağrılarını barındıran bütün bir client'tır. Ayrı bir
+  "pos-backend" repo'suna gerek yoktur.
+
+- "Cloud backend'ine ne kadar gerek var?"
+  Tam olarak bir tane. Database yönetimi de request işleme de o backend'in işi.
+  "Request yönlendirme" (gateway/routing) genelde ayrı bir repo değil, backend
+  içindeki bir router / altyapı katmanıdır (küçük projede yeterli).
+
+
+================================================================================
+2. CİHAZ <-> BACKEND İLİŞKİSİ: OFFLINE-FIRST
+================================================================================
+
+Cihaz her zaman backend'e mi request atmalı? Bir spektrum var:
+
+  a) THIN CLIENT (hep online)
+     Her işlem = API çağrısı, cihazda mantık yok.
+     POS İÇİN KÖTÜ: internet gidince dükkan çalışmaz, veresiye yazılamaz.
+
+  b) OFFLINE-FIRST (local-first)  <-- SENİN İÇİN DOĞRUSU
+     Cihazın kendi lokal DB'si var (Android'de Room/SQLite). İşlemler önce
+     lokalde yapılır, cihaz OFFLINE bile çalışır, internet gelince arka planda
+     backend'e sync eder. Backend "source of truth" olarak çakışmaları çözer
+     ve yedek tutar.
+
+  c) TAMAMEN LOKAL (cloud yok)
+     Çoklu cihaz yok, yedek yok, insight yok. Uygun değil.
+
+Endüstride ciddi POS sistemleri (Square, SumUp, iZettle, Toast) offline-first +
+sync yapar.
+
+
+   app-pos (cihaz)                     Backend (source of truth)
+   +--------------------+              +----------------------+
+   | UI                 |              |  API                 |
+   | iş mantığı         |  -- sync --> |  reconciliation      |
+   | LOKAL DB (Room)    | <-- sync --  |  merkezi DB          |
+   |  -> offline çalışır|              |  -> tüm cihazların   |
+   +--------------------+              |     tek gerçeği      |
+                                       +----------------------+
+
+"Cihazda çalışan kısım" ve "cloud'a gönderilen kısım" İKİSİ DE VARDIR — ama aynı
+veriyi konuşurlar. Cihaz kendi başına iş yapabilir, backend hakemdir.
+
+
+--------------------------------------------------------------------------------
+EN KRİTİK TASARIM KARARI: APPEND-ONLY LEDGER
+--------------------------------------------------------------------------------
+
+Veresiye'yi "bakiye" (değişebilen tek bir sayı) olarak TUTMA. Sadece hareketleri
+sakla (append-only ledger):
+
+    Ahmet: +50 (ekmek borcu)  10:00
+    Ahmet: +30 (süt borcu)    11:00
+    Ahmet: -80 (ödeme)        15:00
+    -> bakiye = hareketlerin toplamı, hiçbir yerde "0" diye yazmıyorsun
+
+Kazandırdıkları:
+  - SYNC KOLAYLAŞIR: iki cihaz aynı anda yazsa bile hareketler çakışmaz, sadece
+    eklenir (last-write-wins dramasına girmezsin).
+  - IDEMPOTENCY: her hareketin bir transaction_id'si olur; aynı ödeme retry'da
+    iki kez işlenmez. Para işlerinde şart.
+  - DENETLENEBİLİRLİK: kim, ne zaman, ne yazdı bellidir. Fintech'te (üstelik Koç
+    bünyesinde) paha biçilmez.
+
+Bu event-sourcing / ledger mantığı, finansal bir domain'de "junior çözüm" ile
+"senior çözüm" arasındaki farktır.
+
+
+================================================================================
+3. CLIENT-SIDE (app-pos İÇİ) KATMANLI MİMARİ
+================================================================================
+
+Local DB + logic "UI'dan DB'ye yaz" kadar basit DEĞİL, ama tam teşekküllü bir
+backend de DEĞİL — ortada bir yer. Android app'in İÇİNDE şu katmanlar olur:
+
+    UI (XML layout + Activity/Fragment)
+       |
+    ViewModel  (StateFlow, ekran durumu)
+       |
+    Repository  <- KİLİT KATMAN: "veriyi lokalden mi backend'den mi alacağıma
+       |            ben karar veririm" burada yaşar
+       +-- Local data source  (Room DAO'lar, offline'ın kalbi)
+       +-- Remote data source (Retrofit API client)
+       |
+    Sync engine  (arka planda WorkManager: kuyruk, retry, çakışma çözümü)
+
+Bu "logic" şunları içerir (basit değil):
+  - Room şeması + DAO'lar (append-only ledger burada tutulur)
+  - OUTBOX PATTERN: offline yazılan her hareket "gönderilmeyi bekleyen" kuyruğa
+    girer, internet gelince sync olur
+  - IDEMPOTENCY + RETRY: transaction_id ile aynı hareket iki kez gitmez
+  - CONFLICT RESOLUTION: ledger olduğu için kolay, yine de "server bunu gördü mü"
+    kontrolü var
+
+ÖNEMLİ: Bu bir client-side offline-first mimarisidir, bir SUNUCU DEĞİLDİR.
+HTTP dinlemez, başka cihazlara servis vermez, DB'nin tek sahibi backend'dir.
+Bu yüzden AYRI BİR REPO'YA GEREK YOKTUR — katmanlar app-pos'un içinde MODÜL
+olarak ayrılır (repo ile değil).
+
+
+--------------------------------------------------------------------------------
+3.1 "APP BACKEND'İ DİNLEMELİ Mİ?" — HAYIR, CLIENT DİNLEMEZ, ÇAĞIRIR
+--------------------------------------------------------------------------------
+
+"Dinlemek" (listening) = port açıp gelen bağlantıları beklemek = SUNUCU
+davranışı. Backend :8080'de dinler. app-pos DİNLEMEZ, iletişimi hep O BAŞLATIR:
+
+    app-pos  ---- "yeni hareket kaydet" ---->  Backend    (app başlatır)
+    app-pos  <--- cevap --------------------   Backend
+
+    Backend  --X-->  app-pos     (backend kendiliğinden app'e bağlanamaz:
+                                  NAT arkası, değişken IP, cihaz uykuda)
+
+Yani app'in içinde "gelen istekleri karşılayan router" YOKTUR; olması gereken
+bir şey de değildir. Sunucudaki router'ın (POST /transactions -> şu fonksiyon)
+app'te karşılığı yoktur, çünkü app'e kimse istek atmaz.
+
+Backend bir şey söylemesi gerekirse üç yol var (hiçbiri "app dinliyor" değil):
+  1. POLLING / PERİYODİK SYNC — app sorar: "son sync'ten beri yenilik var mı?"
+  2. PUSH NOTIFICATION (FCM) — Android İŞLETİM SİSTEMİ Google ile bağlantı
+     tutar, mesaj gelince app'i uyandırır. Sen sadece callback yazarsın, port
+     açmazsın.
+  3. WEBSOCKET — yine bağlantıyı APP başlatır, sonra açık tutar. Veresiye için
+     muhtemelen gereksiz (pil + karmaşıklık maliyeti).
+
+KATMANLAR BUNU NASIL BÖLÜYOR?
+
+  core-network   Retrofit client, HTTP çağrıları, auth header, JSON.
+                 GİDEN çağrıları yapar. Router değil, tam tersi: "istemci".
+  core-data      Room DAO + Repository + SYNC ENGINE. "Ne zaman network'e
+                 gideyim, ne zaman lokalden okuyayım" kararı. Outbox, retry.
+  core-domain    Ledger kuralları, modeller. Ağdan TAMAMEN habersiz, HTTP bilmez.
+
+"Router tarzı bir şey" diye aradığın rol = core-data'daki SYNC ENGINE. Ama işlevi
+"gelen istekleri yönlendirmek" değil, "GİDEN işleri zamanlamak":
+
+    Kullanıcı "Ahmet'e 50 TL yaz" dedi
+            |
+    core-domain: hareket geçerli mi? (ledger kuralları)
+            |
+    core-data:  -> Room'a yaz (anında, offline olsa bile OK)
+                -> outbox kuyruğuna ekle
+            |
+    Sync engine (WorkManager, internet varken uyanır):
+                -> kuyruktaki hareketleri al
+                -> core-network üzerinden backend'e POST et
+                -> başarılıysa kuyruktan sil
+                -> başarısızsa retry (transaction_id sayesinde çift işlenmez)
+
+
+--------------------------------------------------------------------------------
+3.2 ARKA PLAN ÇALIŞMA — UI'SIZ BİLEŞEN, AYRI APP DEĞİL
+--------------------------------------------------------------------------------
+
+"App sürekli açık durmuyor, arka planda çalışan bir şey lazım" — DOĞRU. Ama bu
+ayrı bir app/backend değil, AYNI APK'nın içindeki UI'sız bir bileşendir:
+
+    app-pos (tek APK)
+    +-- UI katmanı        -> Activity/Fragment, kullanıcı bakarken çalışır
+    +-- arka plan katmanı -> WorkManager / Service, UI kapalıyken de çalışır
+                             (aynı Room DB'ye, aynı Repository'ye erişir)
+
+KÖRÜ KÖRÜNE POLLING ANDROID'DE ÇALIŞMAZ:
+Modern Android (6.0+) arka planı agresif kısıtlar (Doze, App Standby, background
+execution limits). "Her 30 saniyede istek at" loop'unu sistem öldürür/erteler.
+WorkManager periyodik işlerde MİNİMUM PERİYOT 15 DAKİKADIR, OEM'ler (Samsung,
+Xiaomi, Huawei) daha da geciktirebilir. Yani sürekli polling = pil düşmanı +
+güvenilmez.
+
+DOĞRU DESEN: ZAMANA DEĞİL, OLAYA BAĞLA
+
+  TETİKLEYİCİ                NE ZAMAN            ARAÇ
+  Kullanıcı işlem yaptı      anında (outbox)     WorkManager one-time
+  İnternet geri geldi        otomatik            WorkManager NetworkType.CONNECTED
+  App/ekran açıldı           foreground'a gelince ViewModel / lifecycle
+  Backend'de yenilik var     anında              FCM push ("uyan, sync et")
+  Emniyet ağı                15-30 dk'da bir     WorkManager periodic
+
+KİLİT FİKİR: Backend'de yenilik olduğunu öğrenmek için sürekli sormana gerek yok
+— backend FCM ile "yenilik var" diye DÜRTSÜN, sen sync'i çalıştır. Müşteri
+app-mobile'dan ödeme yapınca kasadaki cihaza anlık haber vermenin doğru yolu bu.
+Sürekli polling'e göre hem anlık hem çok daha ucuz.
+
+POS CİHAZI ÖZEL DURUM (senin lehine):
+POS cihazları normal telefon değil — genelde sürekli prizde (pil kaygısı yok),
+tek amaçlı / kiosk-dedicated modda, ekran sürekli açık. Bu şartlarda FOREGROUND
+SERVICE kullanılabilir: kalıcı bildirimle çalışan, sistemin öldürmediği servis.
+Böylece gerçekten sürekli ayakta bir sync bileşenin olur. MDM ile pil
+optimizasyonundan muaf tutulabilir.
+=> app-mobile'da BUNU YAPMA (normal telefon, pil önemli, kullanıcı rahatsız
+   olur): orada FCM + app açılınca sync doğru yaklaşımdır.
+   İki client, iki farklı strateji, AYNI core-data katmanı.
+
+YÖN MESELESİ (akışı basitleştirir):
+  - CİHAZDAN ÇIKAN veri (veresiye yazma): polling gerekmez. Kullanıcı yazar ->
+    Room -> outbox -> internet varken gönderilir. Tetikleyici kullanıcının
+    kendisi.
+  - CİHAZA GELEN veri (müşteri ödemesi, başka kasadan giriş): asıl "haberdar
+    olma" ihtiyacı burada. Çözüm: FCM + açılışta sync.
+
+Sonuç: ihtiyacın "sürekli sorgulayan arka plan app'i" değil, OLAYLARA TEPKİ
+VEREN BİR SYNC BİLEŞENİ.
+
+AÇIK KARAR: Token'daki POS cihazı dedicated/kiosk donanım mı, yoksa normal
+Android tablet gibi mi kullanılacak? -> Foreground service mi WorkManager+FCM mi
+sorusunu bu belirliyor.
+
+
+================================================================================
+4. REPO / GITHUB TASARIMI: TEK MONOREPO
+================================================================================
+
+Branch'ler bu iş için DEĞİLDİR. Branch = aynı kod tabanının farklı zaman/
+versiyonları (feature, fix, release). Üç ayrı parçayı branch'lere koymak yanlış
+kullanımdır.
+
+Doğru soru: 3 ayrı repo mu, 1 monorepo mu? -> Senin durumunda TEK MONOREPO.
+
+    veresiye-platform/           <- TEK repo
+    +-- app-pos/                 (Android, Kotlin, XML)
+    |   +-- app/                 UI (XML layout + Activity/Fragment)
+    |   +-- core-data/           Room + Repository + Sync
+    |   +-- core-domain/         iş kuralları, modeller (ledger mantığı)
+    |   +-- core-network/        Retrofit API client
+    |
+    +-- app-mobile/              (Android, müşteri tarafı — aynı katmanlı yapı,
+    |                             daha ince)
+    |
+    +-- backend/                 (senin "cloud"un)
+    |   +-- api/                 endpoint'ler
+    |   +-- domain/              veresiye/ödeme kuralları
+    |   +-- db/                  migration'lar, şema
+    |   +-- (opsiyonel) analytics/  faz 2 ML buraya
+    |
+    +-- shared-contracts/        (OpenAPI — app'ler ve backend aynı modeli
+    |                             konuşsun)
+    +-- docs/                    (mimari, README)
+    +-- README.md                <- her şeyin haritası
+
+
+NEDEN MONOREPO (senin için):
+  - Tek yerde durur, 50 repo arasında kaybolmaz.
+  - Bağlantı besbelli — klasör yapısı mimariyi anlatır.
+  - Atomik değişiklik — API şemasını değiştirince backend + iki app'i TEK PR'da
+    güncellersin.
+  - Tek portföy parçası — mülakat/mezuniyet için bütünlüklü tek şey.
+
+3 AYRI REPO ne zaman mantıklı? Ayrı takımlar, ayrı release döngüleri, ayrı erişim
+izinleri gerektiğinde. Senin senaryonda bunların hiçbiri yok.
+
+
+--------------------------------------------------------------------------------
+BRANCH vs KLASÖR — ZAMAN EKSENİ vs MEKAN EKSENİ
+--------------------------------------------------------------------------------
+
+  KLASÖRLER = "hangi parça"   (POS mu, backend mi) -> kalıcı, hep yan yana
+  BRANCH'LER = "hangi iş"     (sesli giriş özelliği, şu bug fix) -> geçici,
+                               sonra main'e merge
+
+                        Branch'lerde tutmak      Monorepo (klasörler)
+  Üç parça aynı anda      Hayır (tek branch)      Evet (hepsi yan yana)
+   diskte mi?
+  İkisine birlikte        Hayır                   Evet
+   bakabilir misin?
+  Tek PR'da backend+app   İmkansız                Evet
+   değiştirir misin?
+  Git'in doğasına uygun?  Hayır (amaç dışı)       Evet
+
+Branch kullanımı (doğru):
+    main branch (kararlı, çalışan hal)
+    veresiye-platform/  <- app-pos + backend + app-mobile HEPSİ burada
+
+    feature/voice-input branch
+    veresiye-platform/  <- yine hepsi burada, ama app-pos'a sesli giriş
+                           eklenmiş hali. Bitince main'e MERGE.
+
+
+--------------------------------------------------------------------------------
+MONOREPO'YU PROFESYONEL GÖSTEREN ŞEYLER
+--------------------------------------------------------------------------------
+
+1. KÖK README bir "harita" olsun: her alt klasör ne, nasıl bağlanıyor
+   (ASCII diyagram), her biri nasıl çalıştırılıyor. İlk 30 saniyede sistem
+   anlaşılmalı.
+
+2. COMMIT PREFIX'leri kullan:
+       feat(pos): offline ledger sync eklendi
+       fix(backend): idempotency retry hatası
+       chore(contracts): OpenAPI ödeme modeli güncellendi
+
+3. HER ALT KLASÖR BAĞIMSIZ ÇALIŞSIN: kendi README + kendi çalıştırma komutu.
+   Monorepo "her şey birbirine yapışık" demek değil; sınırlar net kalır.
+
+UYARI: Android + backend farklı dil/build sistemleri. Gerçek bir "birleşik build"
+(Bazel gibi) kurmaya kalkma — overkill. Monorepo sadece "aynı Git repo altında
+yan yana klasörler" demek. Her klasör kendi dünyasında derlenir.
+
+
+--------------------------------------------------------------------------------
+"BAĞIMSIZ KLASÖRLER" DURUMU — NORMAL, AMA TUTKAL EKLE
+--------------------------------------------------------------------------------
+
+Üç klasörün KOD OLARAK bağımsız olması İYİ ve olması gerekendir (biri diğerini
+import etmez). Ama tamamen ilgisiz görünmemeli:
+
+  - Kök README (sistemin haritası) ekle.
+  - shared-contracts (API şeması) — detay için bkz. bölüm 4.1.
+
+KONTROL — iç içe .git var mı? (olmamalı, kökte tek .git olmalı)
+    # repo kökünde:
+    find . -name ".git" -maxdepth 2
+Sadece ./.git çıkmalı. ./app-pos/.git gibi iç içe .git çıkarsa düzeltilmeli.
+
+
+--------------------------------------------------------------------------------
+4.1 shared-contracts NE İŞE YARAR?
+--------------------------------------------------------------------------------
+
+Amaç: app-pos, app-mobile ve backend'in AYNI DİLİ konuştuğuna emin olmak. Kod
+paylaşmıyorlar (biri diğerini import etmiyor) ama aynı JSON'u konuşmak
+zorundalar. O anlaşmanın yazılı hali burada durur.
+
+PROBLEM (contract olmayan dünya):
+  Backend yazdı:   { "customerId": "...", "amount": 5000,  "type": "DEBT" }
+  App gönderdi:    { "customer_id": "...", "amount": 50.0, "kind": "debt" }
+  -> 3 hata: alan adı, kuruş vs lira, enum adı. Hiçbiri derleme zamanında
+     yakalanmaz; ÇALIŞMA ZAMANINDA, üstelik PARA HATASI olarak patlar.
+
+ÇÖZÜM: tek bir yazılı sözleşme
+
+    shared-contracts/
+    +-- openapi.yaml     <- tek gerçek: endpoint'ler, alan adları, tipler
+
+    Transaction:
+      properties:
+        transaction_id: { type: string, format: uuid }   # idempotency için
+        customer_id:    { type: string }
+        amount_minor:   { type: integer }   # KURUŞ. float yok.
+        type:           { enum: [DEBT, PAYMENT] }
+        created_at:     { type: string, format: date-time }
+
+ASIL KAZANÇ — bundan OTOMATİK ÜRETİM (sadece doküman değil):
+  - Kotlin data class + Retrofit interface OTOMATİK üretilir (OpenAPI Generator).
+    Elle model yazmazsın -> yazım hatası yapamazsın. Şema değişirse kod yeniden
+    üretilir, uyumsuzluk DERLEME HATASI olarak çıkar (çalışma zamanında değil).
+  - MOCK SERVER bedava gelir — Prism'i openapi.yaml'a doğrultursun, backend hiç
+    yazılmamışken app'i gerçek API'ye konuşuyormuş gibi geliştirirsin.
+  - Backend tarafı da doğrulanır (response'lar şemaya uyuyor mu testi).
+
+BAĞIMLILIK YÖNÜ (monorepo'daki "tutkal"):
+
+            shared-contracts/openapi.yaml
+            (kimseye bağımlı değil)
+               ^            ^            ^
+          app-pos      app-mobile     backend
+          (üretir)      (üretir)      (uyar)
+
+Üçü de şemaya bakar, birbirlerine bakmaz. Monorepo faydası: şema + backend + iki
+app TEK PR'da güncellenir. Ayrı repo olsa üç PR'ı senkron tutman gerekirdi.
+
+NE ZAMAN GEREKSİZ? Tek kişi, tek app, 5 endpoint -> overkill olabilir. AMA senin
+durumunda İKİ AYRI CLIENT aynı backend'e konuşacak (uyumsuzluk riski 2 katı) ve
+domain para/ledger (kayma toleransı sıfır). Bu iki sebep haklı çıkarıyor.
+
+BAŞLANGIÇ İÇİN MİNİMUM: openapi.yaml'a sadece ledger çekirdeği — transaction
+oluştur, müşteri bakiyesi çek, sync endpoint'i. Yer tutucu olarak GET /insights
+eklenirse faz 2 baştan planlanmış görünür.
+
+
+================================================================================
+5. EK ÖZELLİK FİKİRLERİ
+================================================================================
+
+--------------------------------------------------------------------------------
+VOICE INPUT / VOICE AGENT — iyi oturuyor
+--------------------------------------------------------------------------------
+Esnafın elleri meşgul; "Ahmet'e 50 lira ekmek yazdım" deyip kaydın otomatik
+girilmesi POS'ta ciddi friction azaltır.
+
+Uyarılar:
+  - Türkçe ASR + gürültülü dükkan ortamı = doğruluk düşer, test et.
+  - PARA SÖZ KONUSU: mutlaka confirmation UX ("Ahmet, 50 TL, onaylıyor musun?").
+    Sesli girişin yanlış anlaması sessizce borç yazmamalı.
+  - İsim eşleştirme (hangi Ahmet?) NLU tarafında ayrı problem — isim + son işlem
+    context'iyle çözülür.
+
+--------------------------------------------------------------------------------
+MICRO CREDIT SYSTEM - based on user behavior
+--------------------------------------------------------------------------------
+Kullanıcıların alışkanlıklarına, opsiyonel olarak kredi kartı harcama ve bakiyeleri
+(bankadan alınabilecek bilgilere göre) göz önünde bulundurularak onlara haftalık 
+vs oranında vadeli, bikaç yüz veya bikaç bin tl tarzı aslında veresiyeyi satıcı değil
+bankaya yapıyormuş tarzında kredi kartlarındaki esnek hesaptan daha cömert ancak kredi
+almak gibi uzun vade veya hesap işlem yükü olmayan, ödeme esnasında kullanılabilecek
+düşük faizli ve vadeli şekilde işleyen. kredi kartının asgarisine dahil olmasından 
+daha cömert olan şekilde, bir bankanın müşteri çekmek için kullanabileceği tarzda bir
+uygulama.
+Detayları TBD olarak duruyor şu anda
+
+--------------------------------------------------------------------------------
+ML / DATA SCIENCE INSIGHT — yön doğru, ama FAZ 2
+--------------------------------------------------------------------------------
+MVP ölçeğinde gerçek ML için yeterli veri olmaz; başta basit analytics/heuristik
+>> ML. Asıl değerli olan: elindeki veri enformel KREDİ verisidir (veresiye =
+kayıt dışı borç).
+
+Kurulabilecek güçlü ürün açıları:
+  - KREDİ/ÖDEME RİSK SKORU: "Bu müşteriye veresiye vereyim mi?" sinyali. Küçük
+    esnaf için mini kredi bürosu gibi. (Fintech'in kalbi.)
+  - NAKİT AKIŞI TAHMİNİ: "bu hafta ~X TL tahsilat bekleniyor".
+  - BÖLGESEL BENCHMARK: "veresiye vaden mahalle ortalamasından uzun".
+
+İki gerçek engel:
+  - KVKK: Token'da bir GATE olacak, süs değil. "Anonymize edip ML'e sokarım"
+    kulağa basit gelir ama doğru anonimizasyon zordur (re-identification riski,
+    özellikle bölgesel + küçük veri kümesinde). Cross-merchant benchmark ayrı bir
+    rıza/hukuk boyutu getirir. Ekibe erken sor.
+  - VERİ HACMİ: bölgesel insight için çok dükkanın verisi gerekir, MVP'de olmaz.
+
+Pratik: insight'ı önce TEK DÜKKAN İÇİ basit istatistikle başlat (müşteri risk
+listesi, tahsilat takvimi). ML + bölgesel karşılaştırmayı FAZ 2 yap. Bu fintech'e
+"veri governance'ı biliyorum" mesajı verir — cool bir modelden çok puan getirir.
+
+
+================================================================================
+6. GELİŞTİRME BAŞLANGIÇ SIRASI: CONTRACT-FIRST + MOCK
+================================================================================
+
+Sıralama (en değerli):
+
+  1. ÖNCE CONTRACT'I YAZ, MOCK'U ONDAN TÜRET.
+     Sahte JSON döndürmek yerine OpenAPI şemasını (endpoint + request/response
+     modelleri) önce tasarla. Sonra:
+       - Backend hazır değilken app'i çalıştırmak için MOCK SERVER kur
+         (Prism ile OpenAPI'den otomatik, ya da MockWebServer).
+       - App gerçek API'ye konuşuyormuş gibi geliştirilir, backend paralelde
+         yazılır.
+       - Contract-first sayesinde gerçek backend'e geçiş SIFIR REFACTOR — mock
+         ve gerçek aynı şemayı konuşur.
+
+  2. PREVIEW/DEMO için iki seçenek (karıştırma):
+       - UI DEMO (paydaşa göstermek): statik HTML / Figma / XML layout preview,
+         backend'e bağlanmaz. Hızlı satış aracı.
+       - UÇTAN UCA ÇALIŞAN İSKELET (mimariyi kanıtlamak): app-pos -> mock server
+         -> sahte ledger, offline sync dahil çalışır. Daha değerli, çünkü
+         mimarinin çalıştığını gösterir.
+
+     Token bağlamında ikincisi çok daha etkili: "şu ekran güzel" yerine "offline
+     yazdım, uçağa bindim, indim, sync oldu, ledger tutarlı" diyebilmek.
+
+Pratik akış:
+     OpenAPI şeması -> Prism mock -> app-pos'u mock'a bağla -> offline-first
+     akışı çalıştır.
+
+ML için şemada "ileride buraya GET /insights gelecek" diye YER TUTUCU ENDPOINT
+bırak — böylece faz 2 sonradan yamanmış gibi durmaz, baştan planlanmış görünür.
+
+
+================================================================================
+ÖZET — TEK CÜMLELER
+================================================================================
+- 3 parça: app-pos, app-mobile, backend (+ shared-contracts).
+- Client'ların ayrı backend'i yok; hepsi tek backend'e konuşur.
+- Backend = source of truth + tek DB'nin sahibi.
+- Client DİNLEMEZ, ÇAĞIRIR. App'in içinde router yok; core-network (giden çağrı)
+  + core-data'daki sync engine (ne zaman gideceğine karar veren akıl) var.
+- Arka plan işi ayrı app değil, aynı APK'da UI'sız bileşen (WorkManager/Service).
+- Körü körüne polling yapma; olaya bağla (kullanıcı işlemi, ağ geldi, app açıldı,
+  FCM push, 15-30 dk emniyet ağı). POS dedicated ise foreground service uygun.
+- app-pos offline-first çalışır (Room + outbox + sync), backend hakem.
+- Veresiye'yi bakiye değil append-only LEDGER olarak tut.
+- Hepsi TEK monorepo'da yan yana klasör (branch değil).
+- Branch = "hangi iş", klasör = "hangi parça".
+- shared-contracts = üçünün aynı JSON'u konuşma garantisi + kod/mock üretimi.
+- Başlangıç: contract-first + mock server + offline-first iskelet.
+- Voice input iyi (confirmation şart). ML faz 2 (KVKK gate).
+================================================================================

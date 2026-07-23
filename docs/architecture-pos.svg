@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="1120" viewBox="0 0 1180 1120" font-family="'Segoe UI', Arial, sans-serif">
+  <!-- ============ DEFS ============ -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#37474f"/>
+    </marker>
+    <marker id="arrowDashed" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#8e24aa"/>
+    </marker>
+  </defs>
+
+  <style>
+    .title   { font-size: 22px; font-weight: 700; fill: #263238; }
+    .section { font-size: 15px; font-weight: 700; fill: #546e7a; letter-spacing: 1px; }
+    .boxTitle{ font-size: 14px; font-weight: 700; }
+    .boxSub  { font-size: 11px; fill: #546e7a; }
+    .mod     { font-size: 10px; font-weight: 700; fill: #00695c; letter-spacing: .5px; }
+    .lbl     { font-size: 11px; fill: #37474f; }
+    .lblP    { font-size: 11px; fill: #8e24aa; font-style: italic; }
+    .note    { font-size: 10px; fill: #78909c; }
+    .code    { font-family: 'Consolas','Courier New',monospace; font-size: 10.5px; fill: #263238; }
+    .codeKey { font-family: 'Consolas','Courier New',monospace; font-size: 10.5px; fill: #00695c; }
+    .todo    { font-size: 10px; fill: #ad1457; font-weight:700; }
+    .flow    { stroke: #37474f; stroke-width: 1.6; fill: none; }
+    .flowP   { stroke: #8e24aa; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  </style>
+
+  <rect x="0" y="0" width="1180" height="1120" fill="#fafafa"/>
+  <text x="40" y="42" class="title">app-pos — Mimari (Veresiye Dijital Takip)</text>
+  <text x="40" y="62" class="note">Katmanlı client mimarisi · offline-first · append-only ledger · "client çağırır, dinlemez"</text>
+
+  <!-- =================================================================== -->
+  <!-- BÖLÜM 1: SİSTEM GÖRÜNÜMÜ                                              -->
+  <!-- =================================================================== -->
+  <text x="40" y="98" class="section">1 · SİSTEM GÖRÜNÜMÜ — kim kime çağrı atar</text>
+  <rect x="30" y="110" width="800" height="255" rx="8" fill="#ffffff" stroke="#cfd8dc"/>
+
+  <!-- app-pos (esnaf) -->
+  <rect x="60" y="150" width="180" height="90" rx="8" fill="#e3f2fd" stroke="#1976d2"/>
+  <text x="150" y="178" text-anchor="middle" class="boxTitle" fill="#0d47a1">app-pos</text>
+  <text x="150" y="197" text-anchor="middle" class="boxSub">ESNAF · POS (telefon)</text>
+  <text x="150" y="214" text-anchor="middle" class="boxSub">veresiye yaz · tahsilat</text>
+  <text x="150" y="230" text-anchor="middle" class="boxSub">offline çalışır</text>
+
+  <!-- app-mobile (müşteri) -->
+  <rect x="620" y="150" width="180" height="90" rx="8" fill="#f3e5f5" stroke="#8e24aa"/>
+  <text x="710" y="178" text-anchor="middle" class="boxTitle" fill="#6a1b9a">app-mobile</text>
+  <text x="710" y="197" text-anchor="middle" class="boxSub">MÜŞTERİ</text>
+  <text x="710" y="214" text-anchor="middle" class="boxSub">borç gör · öde</text>
+  <text x="710" y="230" text-anchor="middle" class="boxSub">telefon + OTP</text>
+
+  <!-- Backend -->
+  <rect x="330" y="270" width="200" height="80" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="430" y="298" text-anchor="middle" class="boxTitle" fill="#1b5e20">Backend</text>
+  <text x="430" y="316" text-anchor="middle" class="boxSub">source of truth · tek DB</text>
+  <text x="430" y="333" text-anchor="middle" class="boxSub">auth · ledger · sync · reconcile</text>
+
+  <!-- app-pos -> backend (app başlatır) -->
+  <path class="flow" d="M150,240 L150,310 L328,310" marker-end="url(#arrow)"/>
+  <text x="60" y="262" class="lbl">HTTPS/REST — çağrıyı APP başlatır:</text>
+  <text x="60" y="277" class="lbl">enroll · POST /transactions · GET balance</text>
+
+  <!-- app-mobile -> backend -->
+  <path class="flow" d="M710,240 L710,310 L532,310" marker-end="url(#arrow)"/>
+  <text x="800" y="262" text-anchor="end" class="lbl">telefon+OTP · GET balance ·</text>
+  <text x="800" y="277" text-anchor="end" class="lbl">POST payment</text>
+
+  <!-- backend -X-> app (FCM push) -->
+  <path class="flowP" d="M330,300 L150,300 L150,242" marker-end="url(#arrowDashed)"/>
+  <text x="158" y="128" class="lblP">◄ FCM push: "uyan, sync et" (backend app'e bağlanamaz; sadece dürtebilir)</text>
+  <path class="flowP" d="M530,290 L710,290 L710,242" marker-end="url(#arrowDashed)"/>
+
+  <!-- kural notu -->
+  <text x="345" y="145" class="note">KURAL: client DİNLEMEZ, ÇAĞIRIR. Backend kendiliğinden</text>
+  <text x="345" y="159" class="note">app'e bağlanamaz (NAT, değişken IP, uyku) → FCM ile dürter.</text>
+
+  <!-- Auth özet kutusu (sistemin sağı) -->
+  <rect x="855" y="110" width="295" height="255" rx="8" fill="#fff8e1" stroke="#f9a825"/>
+  <text x="870" y="134" class="boxTitle" fill="#e65100">AUTH KARARLARI (yer tutucu)</text>
+  <text x="870" y="158" class="code">• app-pos (esnaf):</text>
+  <text x="882" y="174" class="boxSub">cihaz kaydı → uzun ömürlü refresh</text>
+  <text x="882" y="189" class="boxSub">token → sessiz access token. Tekrar</text>
+  <text x="882" y="204" class="boxSub">şifre girmez (Square/SumUp deseni).</text>
+  <text x="870" y="226" class="code">• app-mobile (müşteri):</text>
+  <text x="882" y="242" class="boxSub">telefon + OTP (SMS). Kayıt = giriş.</text>
+  <text x="882" y="257" class="boxSub">Sonra kullanıcı adı girer. Düşük</text>
+  <text x="882" y="272" class="boxSub">friction (yaşlı kullanıcı dostu).</text>
+  <text x="870" y="294" class="code">• Her istek:</text>
+  <text x="882" y="310" class="boxSub">AuthInterceptor → Bearer token</text>
+  <text x="882" y="325" class="boxSub">header'a otomatik basar (OkHttp).</text>
+  <text x="870" y="348" class="todo">TODO: token yenileme, güvenli saklama (Keystore)</text>
+
+  <!-- =================================================================== -->
+  <!-- BÖLÜM 2: app-pos İÇ KATMANLARI                                        -->
+  <!-- =================================================================== -->
+  <text x="40" y="410" class="section">2 · app-pos İÇİ — katmanlı mimari (tek APK, çok modüllü Gradle)</text>
+  <rect x="30" y="422" width="800" height="670" rx="8" fill="#ffffff" stroke="#cfd8dc"/>
+
+  <!-- :app / UI -->
+  <rect x="70" y="452" width="330" height="72" rx="8" fill="#e3f2fd" stroke="#1976d2"/>
+  <text x="84" y="472" class="mod">:app  (UI KATMANI)</text>
+  <text x="84" y="492" class="boxTitle" fill="#0d47a1">Activity / Fragment + XML layout</text>
+  <text x="84" y="510" class="boxSub">kullanıcı görür & dokunur · StateFlow gözlemler</text>
+
+  <!-- ViewModel -->
+  <rect x="70" y="560" width="330" height="62" rx="8" fill="#e1f5fe" stroke="#0288d1"/>
+  <text x="84" y="580" class="mod">:app  (MVVM)</text>
+  <text x="84" y="600" class="boxTitle" fill="#01579b">ViewModel — ekran durumu (StateFlow)</text>
+  <text x="84" y="616" class="boxSub">UI olayını alır, Repository'yi çağırır, state yayar</text>
+
+  <!-- Repository -->
+  <rect x="70" y="658" width="330" height="80" rx="8" fill="#fff3e0" stroke="#ef6c00"/>
+  <text x="84" y="678" class="mod">:core-data  (KİLİT KATMAN)</text>
+  <text x="84" y="698" class="boxTitle" fill="#e65100">Repository</text>
+  <text x="84" y="714" class="boxSub">"lokalden mi backend'den mi?" kararı burada.</text>
+  <text x="84" y="729" class="boxSub">ÖNCE lokale yaz (offline OK) → sonra outbox'a at</text>
+
+  <!-- Room DAO -->
+  <rect x="70" y="778" width="155" height="86" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="84" y="798" class="mod">:core-data</text>
+  <text x="84" y="816" class="boxTitle" fill="#1b5e20">Room DAO</text>
+  <text x="84" y="832" class="boxSub">lokal SQLite</text>
+  <text x="84" y="846" class="boxSub">append-only</text>
+  <text x="84" y="860" class="boxSub">ledger burada</text>
+
+  <!-- Retrofit API -->
+  <rect x="245" y="778" width="155" height="86" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
+  <text x="259" y="798" class="mod">:core-network</text>
+  <text x="259" y="816" class="boxTitle" fill="#4527a0">Retrofit API</text>
+  <text x="259" y="832" class="boxSub">giden HTTP</text>
+  <text x="259" y="846" class="boxSub">+AuthInterceptor</text>
+  <text x="259" y="860" class="boxSub">(Bearer token)</text>
+
+  <!-- Sync Engine -->
+  <rect x="70" y="900" width="330" height="72" rx="8" fill="#fce4ec" stroke="#c2185b"/>
+  <text x="84" y="920" class="mod">:core-data  (SYNC ENGINE)</text>
+  <text x="84" y="940" class="boxTitle" fill="#880e4f">WorkManager — outbox · retry · idempotency</text>
+  <text x="84" y="956" class="boxSub">"ne zaman gideceğine" karar verir (giden işleri zamanlar)</text>
+
+  <!-- core-domain (kenarda, çekirdek) -->
+  <rect x="470" y="560" width="330" height="180" rx="8" fill="#f1f8e9" stroke="#689f38" stroke-dasharray="4 3"/>
+  <text x="484" y="582" class="mod">:core-domain  (SAF KOTLIN ÇEKİRDEK)</text>
+  <text x="484" y="602" class="boxTitle" fill="#33691e">İş kuralları + modeller</text>
+  <text x="484" y="620" class="boxSub">• Android / Room / Retrofit importu YOK</text>
+  <text x="484" y="636" class="boxSub">• kimseye bağımlı değil — herkes ONA bakar</text>
+  <text x="484" y="652" class="boxSub">• bakiye = hareketlerin toplamı (ledger)</text>
+  <text x="484" y="668" class="boxSub">• bağımsız test edilebilir (Android'siz)</text>
+  <text x="484" y="690" class="note">Transaction · TransactionType · (TODO) Customer</text>
+  <text x="484" y="712" class="note">Repository & DAO & API bu modeli konuşur;</text>
+  <text x="484" y="726" class="note">aralarında mapper ile Entity/Dto'ya çevrilir.</text>
+
+  <!-- Bağımlılık yönü kutusu -->
+  <rect x="470" y="778" width="330" height="194" rx="8" fill="#eceff1" stroke="#90a4ae"/>
+  <text x="484" y="800" class="boxTitle" fill="#37474f">BAĞIMLILIK YÖNÜ (derleyici zorlar)</text>
+  <text x="484" y="822" class="codeKey">:app</text><text x="514" y="822" class="code"> → :core-data</text>
+  <text x="484" y="840" class="codeKey">:core-data</text><text x="556" y="840" class="code"> → :core-domain, :core-network</text>
+  <text x="484" y="858" class="codeKey">:core-network</text><text x="580" y="858" class="code"> → :core-domain</text>
+  <text x="484" y="876" class="codeKey">:core-domain</text><text x="568" y="876" class="code"> → (hiçbir şey)</text>
+  <text x="484" y="902" class="note">Dış katman içi bilir, iç katman dışı BİLMEZ.</text>
+  <text x="484" y="918" class="note">Domain'in Room importu = DERLEME HATASI →</text>
+  <text x="484" y="934" class="note">mimari erozyonu (big ball of mud) engellenir.</text>
+  <text x="484" y="958" class="todo">Modülleri fiilen oluşturmak: sonraki tur.</text>
+
+  <!-- ==== iç oklar ==== -->
+  <!-- UI <-> ViewModel -->
+  <path class="flow" d="M235,524 L235,558" marker-end="url(#arrow)"/>
+  <text x="242" y="545" class="lbl">kullanıcı olayı ▲ / state ▼</text>
+  <!-- ViewModel -> Repository -->
+  <path class="flow" d="M235,622 L235,656" marker-end="url(#arrow)"/>
+  <text x="242" y="644" class="lbl">çağırır (suspend)</text>
+  <!-- Repository -> DAO -->
+  <path class="flow" d="M147,738 L147,776" marker-end="url(#arrow)"/>
+  <text x="152" y="762" class="lbl">offline</text>
+  <!-- Repository -> API -->
+  <path class="flow" d="M322,738 L322,776" marker-end="url(#arrow)"/>
+  <text x="327" y="762" class="lbl">giden</text>
+  <!-- DAO -> Sync (outbox) -->
+  <path class="flow" d="M147,864 L147,898" marker-end="url(#arrow)"/>
+  <text x="140" y="884" class="lbl" text-anchor="end">outbox besler</text>
+  <!-- Sync -> API -->
+  <path class="flow" d="M322,900 L322,864" marker-end="url(#arrow)"/>
+  <text x="330" y="885" class="lbl">POST et</text>
+
+  <!-- API -> Backend (dışarı): kısa çıkış oku + yatay etiket -->
+  <path class="flow" d="M400,821 L452,821" marker-end="url(#arrow)"/>
+  <text x="410" y="812" class="lbl">POST /transactions</text>
+  <text x="410" y="838" class="note">→ Backend (Bölüm 1) · internet varken (giden)</text>
+
+  <!-- =================================================================== -->
+  <!-- BÖLÜM 3: DATA MODELLERİ PANELİ (sağ)                                  -->
+  <!-- =================================================================== -->
+  <text x="855" y="410" class="section">3 · VERİ MODELLERİ (çekirdek 3'lü)</text>
+  <rect x="855" y="422" width="295" height="670" rx="8" fill="#ffffff" stroke="#cfd8dc"/>
+
+  <!-- Transaction (domain) -->
+  <rect x="870" y="440" width="265" height="128" rx="6" fill="#f1f8e9" stroke="#689f38"/>
+  <text x="882" y="460" class="mod">:core-domain — Transaction</text>
+  <text x="882" y="480" class="code">data class Transaction(</text>
+  <text x="894" y="496" class="code">transactionId: String  <tspan class="note">// UUID</tspan></text>
+  <text x="894" y="512" class="code">customerId: String</text>
+  <text x="894" y="528" class="codeKey">amountMinor: Long  <tspan class="note">// kuruş</tspan></text>
+  <text x="894" y="544" class="code">type: TransactionType</text>
+  <text x="894" y="560" class="code">createdAt: String )  <tspan class="note">// ISO-8601</tspan></text>
+
+  <!-- TransactionDto (network - giden) -->
+  <rect x="870" y="582" width="265" height="132" rx="6" fill="#ede7f6" stroke="#5e35b1"/>
+  <text x="882" y="602" class="mod">:core-network — TransactionDto (GİDEN)</text>
+  <text x="882" y="622" class="code">data class TransactionDto(</text>
+  <text x="894" y="638" class="code">transaction_id: String</text>
+  <text x="894" y="654" class="code">customer_id: String</text>
+  <text x="894" y="670" class="code">amount_minor: Long</text>
+  <text x="894" y="686" class="code">type: String  <tspan class="note">// "DEBT"/"PAYMENT"</tspan></text>
+  <text x="894" y="702" class="code">created_at: String )</text>
+  <text x="882" y="712" class="note"> snake_case JSON ↔ camelCase (mapper)</text>
+
+  <!-- BalanceDto (network - gelen) -->
+  <rect x="870" y="728" width="265" height="104" rx="6" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="882" y="748" class="mod">:core-network — BalanceDto (GELEN)</text>
+  <text x="882" y="768" class="code">data class BalanceDto(</text>
+  <text x="894" y="784" class="code">customer_id: String</text>
+  <text x="894" y="800" class="codeKey">balance_minor: Long  <tspan class="note">// toplam</tspan></text>
+  <text x="894" y="816" class="code">as_of: String )</text>
+
+  <!-- TODO paneli -->
+  <rect x="870" y="846" width="265" height="230" rx="6" fill="#fff0f3" stroke="#ad1457"/>
+  <text x="882" y="866" class="todo">TODO — İLERİDE (bu tur değil)</text>
+  <text x="882" y="888" class="boxSub">• Customer modeli + claimStatus:</text>
+  <text x="894" y="903" class="code">UNCLAIMED / CLAIMED</text>
+  <text x="894" y="918" class="boxSub">esnaf app'siz müşteriyi sadece isimle</text>
+  <text x="894" y="932" class="boxSub">kaydeder; müşteri telefonuyla girince</text>
+  <text x="894" y="946" class="boxSub">backend eski borcu hesaba "claim" eder.</text>
+  <text x="882" y="968" class="boxSub">• SQL'de authed/claimed flag ile</text>
+  <text x="894" y="982" class="boxSub">tracking (POS'tan giden bilgide).</text>
+  <text x="882" y="1004" class="boxSub">• Sync detayı: SyncBatch, çakışma</text>
+  <text x="894" y="1018" class="boxSub">çözümü, idempotency-key header.</text>
+  <text x="882" y="1040" class="boxSub">• Auth implementasyonu: OTP akışı,</text>
+  <text x="894" y="1054" class="boxSub">refresh token, EncryptedPrefs.</text>
+  <text x="882" y="1070" class="note">Detay: docs/architecture-pos.txt</text>
+</svg>
