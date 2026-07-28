@@ -482,3 +482,59 @@ tek app-mobile iki rol modelini ekle (Tur bu session'da netleşti: müşteri tel
 hızlı giriş → oto-kayıt → ödeme geçmişi + profil; "Satıcı ol" → registration + POS
 eşleme; esnafın eklediği UNCLAIMED kayıt henüz User değil, claim ile bağlanır).
 (3) User modeli (`:core-domain`, isBuyer/isSeller) + mock DB düzeni. (4) openapi.yaml.
+
+### 2026-07-29 — Tur 13: User modeli + mock DB (full-app-ready) + yol haritası yeniden sıralandı
+
+FAZ 2'nin asıl içeriği. İki kavramsal karar netleşti ve **faz sırası değişti**.
+
+**YOL HARİTASI YENİDEN SIRALANDI (kullanıcı kararı):** app-mobile öne alındı.
+Yeni sıra: **User modeli (bu tur) → app-mobile UI (mock üstünde) → shared-contracts
+→ Room → backend.** Gerekçe: iki client mock'la çalışınca backend contract'ı gerçek
+ekran ihtiyacına göre yazılır (tasarımın "ihtiyaç bilinmeden yazılan şema değişir"
+ilkesi) + gösterilebilir somut demo. app-mobile `:core-domain`'i KOPYALAYACAK (ayrı
+Gradle projesi; mock-pos deseni), gerçek paylaşım backend fazında.
+
+**CUSTOMER ≠ USER (tasarımın kalbi — karıştırma):**
+- Customer = SATICININ DEFTER KAYDI (app-pos'un bildiği). UNCLAIMED = arkasında hesap
+  OLMAYAN isim+telefon.
+- User = APP-MOBILE HESABI (telefon+OTP giriş). Tek model, rol iki BOOL: isBuyer
+  (herkes böyle başlar) + isSeller ("Satıcı ol" ile). İki rol aynı anda aktif olabilir.
+- Köprü = CLAIM: User telefonuyla girince o numaralı UNCLAIMED Customer CLAIMED olur,
+  `Customer.claimedByUserId` ile bağlanır. İlişki VERİDE (telefon eşleşmesine güvenme).
+
+**Yapılanlar:**
+- `:core-domain` yeni `User.kt`: User (userId + phone non-null + isBuyer/isSeller +
+  email? + sellerInfo? + createdAt) + `SellerInfo` (shopName, shopPhone?). SellerInfo
+  AYRI class → "isSeller=true ⇔ sellerInfo!=null" kuralını DERLEYİCİ korur.
+- `Customer.kt`: `claimedByUserId: String?` eklendi (CLAIMED ⇔ !=null). Yanlış yorum
+  düzeltildi ("null=UNCLAIMED" → telefon pratikte hep dolu).
+- `FakeRepository`: `RawCustomer`+seed'e claimedByUserId (c1→u1, c3→u3, diğerleri null);
+  Customer construct eden **3 nokta** güncellendi (unutulan = derleme hatası, iyi koruma).
+  `_users` seed: `u_owner` (esnaf, isBuyer+isSeller, SellerInfo "Ahmet Bakkal" —
+  Customer'ı YOK, "tek User iki rol" kanıtı) + u1/u3 (CLAIMED customer'ların hesabı).
+- Metodlar (backend-ready, OtpService deseni): **çalışır** — findUserByPhone,
+  observeCurrentUser (mock: owner), registerUser (oto-kayıt: yoksa oluştur/varsa dön),
+  setSeller (isSeller=true + SellerInfo). **imza+TODO** — claimCustomerForUser
+  (app-mobile turunda). observeUser/observeMyTransactions: sadece dokümante (cross-merchant
+  backend ile gelir).
+- Dokümanlar senkronlandı (iki dosya User'da ayrışmıştı): `docs/architecture-pos.md`
+  §4'e Customer≠User + User/SellerInfo kod bloğu + "gerçek DB ne zaman" (Room=FAZ 3 cihazda
+  / Docker sunucu-DB=backend fazı), §7 Customer bloğu + §8 yeni sıra; `veresiye-platform-
+  tasarim.md` ALINAN KARARLAR'a CUSTOMER!=USER + FAZ sırası güncellemesi + FAZ 8 satıcı notu.
+
+**Öğrenilenler:**
+- **Data class'a alan eklemek = tüm construct noktalarını güncelle** (Customer 3 yerde
+  kuruluyordu). Unutulan biri derleme hatası verir — sessiz bug değil, iyi koruma.
+- **Invariant'ı tiple koru:** "satıcıysa bilgi dolu" / "claimed'se user id dolu" —
+  nullable ALT-NESNE (SellerInfo?) veya nullable FK (claimedByUserId?) ile ifade edilince
+  imkânsız durumlar derlemede yakalanır (düz nullable alanlar kaçırırdı).
+- **Locale:** yeni kodda `Locale.forLanguageTag("tr-TR")` (deprecated değil); kod
+  tabanının eski yerleri `Locale("tr","TR")` kullanıyor (ileride topluca güncellenebilir).
+
+**Doğrulama:** `:core-domain:build` ✓ (User/SellerInfo saf JVM), `:app:assembleDebug` ✓
+uyarısız. Mevcut veresiye/ödeme akışları değişmedi (sadece FakeRepository iç satırları +
+Customer alanı). **Cihaz testi:** telefon bağlıysa `posbuild` + akışları dolaş (aynı
+davranış). Build sırasında cihaz bağlı değildi.
+
+**Sıradaki:** app-mobile UI (mock üstünde) — telefon+OTP giriş (oto-kayıt) → ödeme
+geçmişi + profil → "Satıcı ol". POS asset'lerinden türer, `:core-domain`'i kopyalar.

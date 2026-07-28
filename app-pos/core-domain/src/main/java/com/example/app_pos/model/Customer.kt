@@ -11,7 +11,8 @@ package com.example.app_pos.model
 enum class ClaimStatus { UNCLAIMED, CLAIMED }
 
 /**
- * A credit (veresiye) customer.
+ * A credit (veresiye) customer — the MERCHANT'S ledger entry, not an app account.
+ * The account counterpart is [User]; the two are linked by claimedByUserId below.
  *
  * NOTE: balanceMinor is not stored anywhere — it is DERIVED from the customer's
  * ledger entries (append-only rule: a balance is never kept as a single mutable
@@ -20,7 +21,8 @@ enum class ClaimStatus { UNCLAIMED, CLAIMED }
 data class Customer(
     val customerId: String,
     val displayName: String,
-    val phone: String?,              // null = UNCLAIMED customer (phone unknown)
+    val phone: String?,              // the identity we track a customer by; in practice always set
     val claimStatus: ClaimStatus,
+    val claimedByUserId: String?,    // the linked User's id when CLAIMED; null when UNCLAIMED
     val balanceMinor: Long           // in minor units (kuruş); positive = owes money
 )

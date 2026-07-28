@@ -2,8 +2,10 @@ package com.example.app_pos.data
 
 import com.example.app_pos.model.ClaimStatus
 import com.example.app_pos.model.Customer
+import com.example.app_pos.model.SellerInfo
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
+import com.example.app_pos.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -30,11 +32,12 @@ object FakeRepository {
     // yet (CLAIMED) or not (UNCLAIMED). Phone is no longer optional.
     private val _customers = MutableStateFlow(
         listOf(
-            RawCustomer("c1", "Ahmet Yılmaz", "+905551112233", ClaimStatus.CLAIMED),
-            RawCustomer("c2", "Ayşe Demir", "+905552223344", ClaimStatus.UNCLAIMED),
-            RawCustomer("c3", "Mehmet Kaya", "+905554445566", ClaimStatus.CLAIMED),
-            RawCustomer("c4", "Fatma Şahin", "+905556667788", ClaimStatus.UNCLAIMED),
-            RawCustomer("c5", "Hasan Öztürk", "+905558889900", ClaimStatus.UNCLAIMED)
+            // CLAIMED customers point back to the User account that claimed them (u1, u3).
+            RawCustomer("c1", "Ahmet Yılmaz", "+905551112233", ClaimStatus.CLAIMED, "u1"),
+            RawCustomer("c2", "Ayşe Demir", "+905552223344", ClaimStatus.UNCLAIMED, null),
+            RawCustomer("c3", "Mehmet Kaya", "+905554445566", ClaimStatus.CLAIMED, "u3"),
+            RawCustomer("c4", "Fatma Şahin", "+905556667788", ClaimStatus.UNCLAIMED, null),
+            RawCustomer("c5", "Hasan Öztürk", "+905558889900", ClaimStatus.UNCLAIMED, null)
         )
     )
 
@@ -64,6 +67,47 @@ object FakeRepository {
         )
     )
 
+    // App-mobile ACCOUNTS. Separate from customers on purpose (see User/Customer docs):
+    // a customer is the merchant's ledger entry, a user is a real signed-in account.
+    //  - u_owner: the shopkeeper running app-pos — both a buyer AND a seller. Has no
+    //    customer record (a merchant does not owe themselves), proving one account can
+    //    hold both roles at once.
+    //  - u1 / u3: the accounts behind the two CLAIMED customers (same phone numbers).
+    private val _users = MutableStateFlow(
+        listOf(
+            User(
+                userId = "u_owner",
+                phone = "+905550000000",
+                displayName = "Ahmet (Dükkan)",
+                isBuyer = true,
+                isSeller = true,
+                email = null,
+                sellerInfo = SellerInfo(shopName = "Ahmet Bakkal", shopPhone = "+902120000000"),
+                createdAt = "01.07.2026 09:00"
+            ),
+            User(
+                userId = "u1",
+                phone = "+905551112233",
+                displayName = "Ahmet Yılmaz",
+                isBuyer = true,
+                isSeller = false,
+                email = null,
+                sellerInfo = null,
+                createdAt = "05.07.2026 12:30"
+            ),
+            User(
+                userId = "u3",
+                phone = "+905554445566",
+                displayName = "Mehmet Kaya",
+                isBuyer = true,
+                isSeller = false,
+                email = null,
+                sellerInfo = null,
+                createdAt = "08.07.2026 15:45"
+            )
+        )
+    )
+
     /**
      * Appends one entry to the ledger (append-only: never update or delete).
      * Emitting a new list makes every observing screen recompute immediately.
@@ -82,7 +126,7 @@ object FakeRepository {
     fun addCustomer(displayName: String, phone: String): String {
         val id = UUID.randomUUID().toString()
         _customers.value = _customers.value +
-            RawCustomer(id, displayName.trim(), normalizePhone(phone), ClaimStatus.UNCLAIMED)
+            RawCustomer(id, displayName.trim(), normalizePhone(phone), ClaimStatus.UNCLAIMED, null)
         return id
     }
 
@@ -100,6 +144,7 @@ object FakeRepository {
             displayName = raw.name,
             phone = raw.phone,
             claimStatus = raw.claimStatus,
+            claimedByUserId = raw.claimedByUserId,
             balanceMinor = balanceOf(raw.id, _transactions.value)
         )
     }
@@ -113,6 +158,7 @@ object FakeRepository {
             displayName = raw.name,
             phone = raw.phone,
             claimStatus = raw.claimStatus,
+            claimedByUserId = raw.claimedByUserId,
             balanceMinor = balanceOf(raw.id, _transactions.value)
         )
     }
@@ -130,6 +176,7 @@ object FakeRepository {
                     displayName = raw.name,
                     phone = raw.phone,
                     claimStatus = raw.claimStatus,
+                    claimedByUserId = raw.claimedByUserId,
                     balanceMinor = balanceOf(raw.id, ledger)
                 )
             }
@@ -146,6 +193,77 @@ object FakeRepository {
         combine(_customers, _transactions) { people, ledger ->
             people.sumOf { balanceOf(it.id, ledger) }
         }
+
+    // --- User accounts (app-mobile) -----------------------------------------
+    // Signatures are backend-ready: when a real backend/Room arrives, only the
+    // bodies change. Some work already (below); the heavier claim flow is stubbed
+    // until app-mobile drives it end to end.
+
+    /** The account with this phone, or null. Phones compared by digits only. */
+    fun findUserByPhone(phone: String): User? {
+        val target = normalizePhone(phone)
+        return _users.value.firstOrNull { normalizePhone(it.phone) == target }
+    }
+
+    /**
+     * The signed-in account for the current app. In app-pos that is the shopkeeper,
+     * so this mock always emits the owner. On app-mobile this will follow the real
+     * session (whoever logged in with phone + OTP).
+     */
+    fun observeCurrentUser(): Flow<User?> =
+        _users.map { users -> users.firstOrNull { it.userId == "u_owner" } }
+
+    /**
+     * Sign-up == sign-in: if an account with this phone exists, return it; otherwise
+     * create one (a buyer by default) and return it. This is the auto-register step
+     * that runs after a successful OTP on app-mobile.
+     */
+    fun registerUser(phone: String, displayName: String): User {
+        findUserByPhone(phone)?.let { return it }
+        val user = User(
+            userId = UUID.randomUUID().toString(),
+            phone = normalizePhone(phone),
+            displayName = displayName.trim(),
+            isBuyer = true,
+            isSeller = false,
+            email = null,
+            sellerInfo = null,
+            createdAt = nowStamp()
+        )
+        _users.value = _users.value + user
+        return user
+    }
+
+    /**
+     * Flips an account into a seller (the "Become a seller" button). Idempotent:
+     * re-running just updates the shop info. No-op if the user id is unknown.
+     */
+    fun setSeller(userId: String, shopName: String, shopPhone: String? = null) {
+        _users.value = _users.value.map { user ->
+            if (user.userId != userId) user
+            else user.copy(isSeller = true, sellerInfo = SellerInfo(shopName.trim(), shopPhone))
+        }
+    }
+
+    /**
+     * Links an UNCLAIMED customer (matched by phone) to a user, inheriting the old
+     * debt. TODO(app-mobile): implement once sign-in drives claiming end to end —
+     * set claimStatus = CLAIMED and claimedByUserId = userId on the matched record.
+     */
+    fun claimCustomerForUser(userId: String, phone: String): Customer? {
+        TODO("Claim flow arrives with app-mobile sign-in (phase: app-mobile)")
+    }
+
+    // observeUser(userId) and observeMyTransactions(userId) — a buyer's own account
+    // and cross-merchant ledger — are intentionally not implemented yet. They only
+    // make sense once a real backend can serve data across merchants; app-mobile's
+    // profile/history screens will add them then.
+
+    // forLanguageTag (not the deprecated Locale(String, String) used elsewhere in the
+    // codebase) — the modern, warning-free way to build a locale.
+    private fun nowStamp(): String =
+        java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.forLanguageTag("tr-TR"))
+            .format(java.util.Date())
 
     /**
      * The append-only rule in practice: a balance is the sum of its entries,
@@ -167,6 +285,7 @@ object FakeRepository {
         val id: String,
         val name: String,
         val phone: String?,
-        val claimStatus: ClaimStatus
+        val claimStatus: ClaimStatus,
+        val claimedByUserId: String?
     )
 }

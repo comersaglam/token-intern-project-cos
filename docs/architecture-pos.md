@@ -124,6 +124,51 @@ data class BalanceDto(
 > olacak. Yani: `Transaction` (domain) ↔ `TransactionEntity` (Room) ↔
 > `TransactionDto` (JSON). Bu turda sadece domain + DTO taslaklanır.
 
+### Customer ≠ User (iki ayrı kavram — karıştırma)
+
+Sistemde iki farklı "kişi" temsili var; **aynı şey değiller**:
+
+- **`Customer`** = **satıcının defter kaydı** (app-pos'un bildiği). `UNCLAIMED` olabilir
+  — esnafın sadece isim+telefon girdiği, arkasında hesap OLMAYAN kayıt. Bir hesap değil.
+- **`User`** = **app-mobile hesabı** (telefon+OTP ile giriş yapan gerçek kullanıcı). Tek
+  model; rol iki **bool** ile tutulur: `isBuyer` (herkes böyle başlar) ve `isSeller`
+  (profildeki "Satıcı ol" ile açılır). İki rol **aynı anda** aktif olabilir (dükkanını
+  yöneten ama başka esnaftan alışveriş de yapan kişi). Satıcı olunca app-pos'taki
+  müşteri-log/detay görünümleri app-mobile'ın satıcı tarafında da açılır.
+- **Köprü = CLAIM:** bir `User` telefonuyla giriş yapınca, o numaralı `UNCLAIMED`
+  `Customer` kaydı `CLAIMED` olur ve `Customer.claimedByUserId` ile o User'a bağlanır
+  (eski borç geçmişi devralınır). İlişki **veride** tutulur (telefon eşleşmesine
+  güvenilmez) — Room'da foreign key, backend'de join anahtarı olur.
+
+```kotlin
+// :core-domain — app-mobile account. NOT the same as Customer (merchant's ledger entry).
+data class User(
+    val userId: String,          // stable internal id (UUID) — survives a phone change
+    val phone: String,           // identity, unique; sign-in is by this (NOT nullable)
+    val displayName: String,
+    val isBuyer: Boolean,        // everyone starts a buyer
+    val isSeller: Boolean,       // "Become a seller" flips this; both roles can coexist
+    val email: String?,          // optional profile field
+    val sellerInfo: SellerInfo?, // null while not a seller — enforces "seller ⇒ has info"
+    val createdAt: String
+)
+data class SellerInfo(
+    val shopName: String,
+    val shopPhone: String?
+)
+```
+> `SellerInfo` ayrı bir tiptir ki `isSeller=true ⇔ sellerInfo != null` kuralı
+> **derleyici** tarafından korunsun (User'a düz nullable alanlar koymak bunu kaçırırdı).
+> Aynı gerekçe `Customer.claimedByUserId`'de: `CLAIMED ⇔ claimedByUserId != null`.
+
+**Gerçek DB ne zaman? (sık karışan iki katman):**
+- **Lokal kalıcılık = FAZ 3 (Room, CİHAZDA).** Şu an `FakeRepository` RAM'de; uygulama
+  kapanınca sıfırlanır. Room gelince veri **telefonun içinde** (SQLite) kalıcı olur —
+  bu bir "gerçek DB" ama sunucu değil. Offline-first'ün temeli.
+- **Sunucu-DB + gerçek endpoint'ler = backend fazı.** Docker'lı Postgres + REST API
+  burada. Ondan ÖNCE `openapi.yaml`'dan üretilen **mock server (Prism)** ile prova
+  yapılır (app gerçek network kodunu sahte sunucuya karşı test eder).
+
 ---
 
 ## 5. Auth kararları
@@ -232,13 +277,17 @@ Bu turda **yapılmaz**, ama şema/DB tasarımını erken planlamak için not:
   data class Customer(
       val customerId: String,
       val displayName: String,     // esnafın girdiği isim
-      val phone: String?,          // claim edilince dolar
+      val phone: String?,          // kimlik; pratikte hep dolu
       val claimStatus: ClaimStatus,
-      // authedFlag: POS'tan giden bilgide tracking için
+      val claimedByUserId: String?,// CLAIMED ise bağlı User'ın id'si (bkz. §4 Customer≠User)
+      val balanceMinor: Long       // türetilir (ledger toplamı), saklanmaz
   )
   ```
   Esnaf app'siz müşteriyi sadece isimle açar (UNCLAIMED). Müşteri sonra aynı
-  telefonla girince backend eski borcu hesaba **CLAIM** eder.
+  telefonla girince backend eski borcu hesaba **CLAIM** eder → `claimStatus=CLAIMED`
+  + `claimedByUserId` dolar. `User` modeli ve claim ayrımı §4'te (Customer≠User).
+  *(Model artık taslak değil — `:core-domain`'de mevcut. Claim MANTIĞI app-mobile
+  turunda kodlanacak; `FakeRepository.claimCustomerForUser` şimdilik imza + TODO.)*
 - **Sync detayı:** `SyncBatch` (toplu gönderim), çakışma çözümü, `idempotency-key`
   header, `OutboxEntry` (lokal kuyruk tablosu).
 - **Backend hesap logic'i** (enflasyona karşı, mikrokredi açıları için — field'lar
@@ -249,23 +298,30 @@ Bu turda **yapılmaz**, ama şema/DB tasarımını erken planlamak için not:
   customerId + auth devri" soyutlamasına oturur (emülatörde QR test daha kolay).
 - **Auth implementasyonu:** OTP akışı, refresh token, EncryptedSharedPreferences.
 - **Voice input** (esnaf için, confirmation şart) ve **insight/ML** (faz 2).
-- **Satıcı hesabı / app-mobile birleşimi (TBD):** app-mobile yalnız müşteriyi değil
-  satıcıyı da kapsayacak. Müşteri basit login (telefon+OTP) ile kaydolduktan sonra
-  profil ekranındaki "satıcı hesabı girişi"nden satıcı credential'larını girer,
-  POS'tan onay alır, aynı bilgileri DB'den çekip satıcı olarak devam eder.
-  app-pos'un login-gerektiren müşteri-log görme/filtreleme özellikleri app-mobile'ın
-  satıcı tarafında da bulunur (app-pos bağımsız açılışıyla aynı yetenek, iki
-  client'ta paylaşılır). Detay zamanı gelince tasarlanacak.
+- **Satıcı hesabı / app-mobile birleşimi:** artık `User.isBuyer`/`isSeller` (bkz. §4)
+  ile modellendi — TBD değil. app-mobile tek app; kullanıcı telefon+OTP ile girer
+  (oto-kayıt, `isBuyer=true`), profildeki "Satıcı ol" → `isSeller=true` + `SellerInfo`
+  (registration + POS eşleme). Satıcı olunca app-pos'un müşteri-log görme/filtreleme
+  yetenekleri app-mobile'ın satıcı tarafında da açılır (aynı yetenek iki client'ta
+  paylaşılır). **Uygulama sırası öne alındı** — bkz. §8.
 
 ---
 
-## 8. Sonraki adımlar (uygulama sırası)
+## 8. Sonraki adımlar (uygulama sırası — app-mobile öne alındı)
 
-1. `shared-contracts/openapi.yaml` — ledger çekirdeği (transaction, balance, sync,
-   yer tutucu `GET /insights`).
-2. **app-pos: Compose → XML dönüşümü** + Gradle modüllerini (`:core-domain` vb.)
-   oluştur.
-3. app-pos UI katmanı (XML layout + Activity/Fragment) — statik/mock.
-4. app-pos MVVM (ViewModel + StateFlow) + `:core-domain` modelleri.
-5. app-pos `:core-data` (Room + Repository + outbox) + `:core-network` (Retrofit/mock).
-6. → app-mobile → backend.
+**Bitenler:** FAZ 1 (app-pos UI + MVVM + veresiye/ödeme akışı, mock veri, cihazda
+çalışıyor). FAZ 2 başladı: `:core-domain` modülü kuruldu, `User`/`SellerInfo` + Customer
+claim alanı eklendi (bu belge §4).
+
+**Sıra (güncel karar — gösterilebilir demo + contract'ı gerçek ihtiyaca göre yazmak
+için app-mobile backend'den ÖNCE):**
+1. **app-mobile UI (mock üstünde):** telefon+OTP hızlı giriş (oto-kayıt) → ödeme
+   geçmişi + profil; profilde "Satıcı ol". POS'un recycler-view/detay asset'lerinden
+   türer. `User` modelini KOPYALAR (ayrı Gradle projesi; mock-pos deseni).
+2. **`shared-contracts/openapi.yaml`:** iki client'ın gerçek ekran ihtiyacı görülünce
+   ledger + user/auth çekirdeği + yer tutucu `GET /insights`.
+3. **FAZ 3 — `:core-data` (Room):** `FakeRepository` → gerçek Room Repository + outbox;
+   `balanceOf` domain'e saf fonksiyon. Kalıcılık burada gelir (cihazda).
+4. **Backend:** `:core-network` (Retrofit) + Sync + mock server (Prism, openapi'dan) →
+   gerçek backend (Docker DB + endpoint'ler) + OTP'yi gerçeğe bağlama.
+5. Regülasyon (KVKK/PCI) — canlı öncesi gate.

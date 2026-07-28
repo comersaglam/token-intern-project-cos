@@ -515,21 +515,36 @@ StateFlow'lu ViewModel baştan yazılırsa, gerçek veri gelince ekran ve ViewMo
 DEĞİŞMEZ (sadece sahte repository yerine gerçek Repository konur) -> sıfır
 refactor. MVVM ayrımı da baştan doğru oturur (mantık Activity'ye sızmaz).
 
---------------------------------------------------------------------------------
-FAZ 2 — DOMAIN + CONTRACT   <-- ŞU AN BURADAYIZ (sıradaki)
---------------------------------------------------------------------------------
-NOT (güncel sıralama kararı): Faz 2'de User modeli de doğar — tek User +
-isBuyer/isSeller bool flag'ler + nullable alanlar (telefon, e-posta, satıcı
-bilgisi). app-mobile tek app olup hem müşteri hem satıcı olabilecek; "satıcı ol"
-navbar'ı buyer/seller görünümü arasında çevirir. Mock DB formatı buna göre kurulur
-ki Room/backend gelince logic değişmesin. Sıra: Faz 2 model -> auth (telefon+OTP,
-OTP mock) -> app-mobile UI (model hazır olunca, refactor olmadan).
+********************************************************************************
+SIRALAMA GÜNCELLEMESİ (Tur 13): app-mobile ÖNE ALINDI.
+Aşağıdaki faz NUMARALARI korunuyor (referanslar kırılmasın) ama UYGULAMA SIRASI
+değişti. Yeni sıra:
+  1) FAZ 2 (domain + User modeli)  <-- bu turda YAPILDI (aşağıda "DURUM")
+  2) FAZ 6 (app-mobile UI, mock üstünde) — contract ve backend'den ÖNCE
+  3) shared-contracts/openapi.yaml — iki client'ın gerçek ekran ihtiyacı görülünce
+  4) FAZ 3 (Room), 5) FAZ 4/5 (ağ+backend), 6) FAZ 7 (regülasyon)
+NEDEN: iki client mock'la çalışınca contract gerçek ihtiyaca göre yazılır +
+gösterilebilir somut demo çıkar. app-mobile, :core-domain'i KOPYALAR (ayrı Gradle
+projesi; mock-pos'un MoneyFormat kopyaladığı desen); gerçek paylaşım backend fazında.
+********************************************************************************
 
-  - :core-domain modülü: Transaction, Customer, TransactionType, ledger kuralları
-    (saf Kotlin; Android/Room/Retrofit importu YOK)
-  - shared-contracts/openapi.yaml: FAZ 1'de ortaya çıkan gerçek alan ihtiyacına
-    göre yazılır. Minimum: transaction oluştur, müşteri bakiyesi, sync;
-    yer tutucu GET /insights (faz 2 ML baştan planlanmış görünsün).
+--------------------------------------------------------------------------------
+FAZ 2 — DOMAIN + USER MODELİ   <-- bu turda YAPILDI (contract app-mobile'dan sonraya kaydı)
+--------------------------------------------------------------------------------
+DURUM (Tur 12-13): :core-domain modülü kuruldu; Customer/Transaction taşındı;
+User + SellerInfo eklendi; Customer'a claimedByUserId; FakeRepository'ye User seed +
+backend-ready metodlar (findUserByPhone/observeCurrentUser/registerUser/setSeller
+çalışır, claimCustomerForUser imza+TODO). Cihazda derleniyor, mevcut akışlar değişmedi.
+
+User modeli: TEK User + isBuyer/isSeller bool flag'ler (iki rol aynı anda aktif
+olabilir) + SellerInfo (satıcı bilgisi ayrı class -> derleyici korur) + nullable
+alanlar (email). Ayrıntı: yukarıda "CUSTOMER != USER" kararı + docs/architecture-pos.md §4.
+
+  - :core-domain modülü: Transaction, Customer, User, TransactionType, ClaimStatus
+    (saf Kotlin; Android/Room/Retrofit importu YOK). ✓
+  - shared-contracts/openapi.yaml: ARTIK app-mobile'dan SONRA (yukarı bkz.). FAZ 1+
+    app-mobile'da ortaya çıkan gerçek alan ihtiyacına göre yazılır. Minimum: transaction
+    oluştur, müşteri bakiyesi, sync, user/auth; yer tutucu GET /insights.
   - KVKK burada bir TASARIM KISITI olarak devreye girer (bkz. FAZ 7): hangi veri
     neden tutuluyor, UNCLAIMED kayıt hangi hukuki sebeple? Alanlar buna göre.
 
@@ -587,14 +602,12 @@ FAZ 8 — İLERİ ÖZELLİKLER
   - FCM push ("yenilik var, sync et" / "yeni borç")
   - Claim akışı: UNCLAIMED müşteri -> telefonla giriş -> eski borcu devral
   - Voice input (confirmation şart), insight / ML (KVKK gate — bkz. bölüm 5)
-  - SATICI HESABI / app-mobile BİRLEŞİMİ (TBD, yön notu — detay zamanı gelince):
-    app-mobile yalnız müşteriyi değil SATICIYI DA kapsayacak. Müşteri basit login
-    (telefon+OTP) ile kaydolduktan sonra, profil ekranındaki "satıcı hesabı girişi"
-    ile satıcı credential'larını girer, POS'tan onay alır, aynı bilgileri DB'den
-    çekerek satıcı olarak devam eder. app-pos'taki login-gerektiren müşteri-log
-    görme / filtreleme özellikleri app-mobile'ın satıcı tarafında da bulunur.
-    (Bu, yukarıdaki app-pos "bağımsız açılış = yönetim/log görüntüleme" kararıyla
-    aynı yeteneğin iki client'ta paylaşılması demektir.)
+  - SATICI HESABI / app-mobile BİRLEŞİMİ: artık User.isBuyer/isSeller ile MODELLENDİ
+    (TBD değil — bkz. "CUSTOMER != USER" kararı). app-mobile tek app; telefon+OTP ile
+    giriş (oto-kayıt, isBuyer=true), profildeki "Satıcı ol" -> isSeller=true + SellerInfo
+    (registration + POS eşleme). Satıcı olunca app-pos'un müşteri-log görme/filtreleme
+    yetenekleri app-mobile'ın satıcı tarafında da açılır (aynı yetenek iki client'ta
+    paylaşılır = app-pos "bağımsız açılış" yeteneği). UI uygulaması app-mobile turunda.
 
 
 ================================================================================
@@ -697,6 +710,21 @@ VERİ
   müşteri açabilir (UNCLAIMED). Müşteri sonra aynı telefon numarasıyla giriş
   yapınca backend eski borç geçmişini o hesaba CLAIM eder. Sistemin gerçek
   dünyada çalışmasını sağlayan şey budur.
+
+- CUSTOMER != USER (İKİ AYRI KAVRAM, Tur 13'te netleşti — KARIŞTIRMA):
+  * Customer = SATICININ DEFTER KAYDI (app-pos'un bildiği). UNCLAIMED = arkasında
+    hesap OLMAYAN, esnafın yazdığı isim+telefon. Hesap değil.
+  * User = APP-MOBILE HESABI (telefon+OTP ile giriş). TEK model, rol iki BOOL:
+    isBuyer (herkes böyle başlar) + isSeller ("Satıcı ol" ile açılır). İki rol
+    AYNI ANDA aktif olabilir. Satıcı bilgisi ayrı data class SellerInfo (shopName,
+    shopPhone) -> "isSeller=true ise sellerInfo dolu" kuralını DERLEYİCİ korur.
+  * KÖPRÜ = CLAIM: User telefonuyla girince, o numaralı UNCLAIMED Customer CLAIMED
+    olur, Customer.claimedByUserId ile o User'a bağlanır (eski borç devralınır).
+    İlişki VERİDE tutulur (telefon eşleşmesine güvenilmez) -> Room'da FK, backend'de
+    join. Model :core-domain'de mevcut (User.kt); claim MANTIĞI app-mobile turunda.
+  * GERÇEK DB NE ZAMAN (iki katman, karışıyor): lokal kalıcılık = FAZ 3 (Room,
+    CİHAZDA — telefonun içinde SQLite, sunucu değil). Docker'lı sunucu-DB + gerçek
+    endpoint'ler = backend fazı; ondan önce openapi'dan mock server (Prism) ile prova.
 
 - ÜÇ AYRI TEMSİL: Transaction (domain) / TransactionEntity (Room) /
   TransactionDto (JSON). Değişme sebepleri farklı olduğu için ayrılır;
