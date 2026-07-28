@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dashboard tabs. Each item id matches a destination id in dashboard_graph.xml,
+  which is what lets setupWithNavController wire them up automatically.
+-->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/customersFragment"
+        android:icon="@drawable/ic_customers"
+        android:title="@string/nav_customers" />
+
+    <item
+        android:id="@+id/reportsFragment"
+        android:icon="@drawable/ic_reports"
+        android:title="@string/nav_reports" />
+
+    <item
+        android:id="@+id/profileFragment"
+        android:icon="@drawable/ic_profile"
+        android:title="@string/nav_profile" />
+
+</menu>

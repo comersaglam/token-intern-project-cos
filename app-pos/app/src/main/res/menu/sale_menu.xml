@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Action bar entry point from the sale flow into the dashboard. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_dashboard"
+        android:icon="@drawable/ic_dashboard"
+        android:title="@string/dashboard_title"
+        app:showAsAction="ifRoom" />
+
+</menu>

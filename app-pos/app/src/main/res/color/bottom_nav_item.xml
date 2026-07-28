@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A colour that depends on state rather than a fixed value: the selected tab
+  takes the brand blue, the others stay muted. Android picks the first item
+  whose conditions match, so the default must come last.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/primary" android:state_checked="true" />
+    <item android:color="@color/on_surface_variant" />
+</selector>

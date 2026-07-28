@@ -1,0 +1,51 @@
+package com.example.app_pos.ui.sale
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.model.Customer
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+
+/**
+ * Search state for the "pick a customer" step of a sale.
+ *
+ * Deliberately narrower than CustomersViewModel: no total receivable, no debt
+ * filter. During a sale the only question is *who* the entry belongs to — the
+ * overview belongs to the dashboard.
+ *
+ * Customers come from the repository as a Flow, so balances shown at selection
+ * are current. The "type before anything shows" rule lives here rather than in
+ * the fragment, so it can be unit tested and the fragment only renders what it
+ * is given.
+ */
+class CustomerSelectViewModel : ViewModel() {
+
+    private val _query = MutableStateFlow("")
+
+    /** The raw query, so the screen can tell "not searched yet" from "no hits". */
+    val query: StateFlow<String> = _query
+
+    /** Customers matching the current query; empty until the merchant types. */
+    val matches: StateFlow<List<Customer>> =
+        combine(FakeRepository.observeCustomers(), _query) { all, q ->
+            // A blank query means "no search yet", not "match everything" — showing
+            // the full list here is exactly the mix-up this screen was built to fix.
+            if (q.isEmpty()) {
+                emptyList()
+            } else {
+                all.filter { it.displayName.contains(q, ignoreCase = true) }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // "Add '<name>' as a new customer" is offered whenever something is typed;
+    // the fragment reads that straight off `query` (duplicate names are fine —
+    // identity is the phone, captured on the next screen).
+
+    fun onSearchChanged(newQuery: String) {
+        _query.value = newQuery.trim()
+    }
+}

@@ -148,12 +148,69 @@ data class BalanceDto(
 
 ## 6. Akışlar (özet — detay flow-pos.svg)
 
-**Flow A — POS (esnaf veresiye yazar):**
-1. Tutar gir → 2. Ödeme yöntemi (VERESİYE) → 3. Müşteri tanımla:
-   **credential (QR/NFC — TBD)** → CLAIMED, veya **elle isim** → UNCLAIMED →
-   4. **Onay ekranı** (para işi, şart) → 5. domain doğrular → 6. Room'a yaz +
-   outbox (offline OK) → 7. Sync Engine POST (retry, idempotency).
-2. Esnaf alacaklarını ledger'dan görür (müşteri bazlı / genel toplam).
+> **Ödeme ayrımı:** Tutar girişi + ödeme yöntemi (keypad, Kart/Yemek Kartı/Nakit)
+> app-pos'a AİT DEĞİLDİR — Token'ın POS ödeme app'ine aittir. Repo'da bunu
+> `mock-pos/` (ayrı Gradle projesi/APK) taklit eder. mock-pos'ta [VERESİYE]'ye
+> basılınca app-pos bir **custom action intent** ile açılır
+> (`com.example.app_pos.action.CREDIT` + `amount_minor` extra, Long kuruş). İki app
+> birbirini import etmez; köprü sabitleri iki tarafta kopyalanır.
+>
+> app-pos **iki giriş noktalıdır:** (a) mock-pos'tan veresiye handoff'u ile
+> doğrudan müşteri-seçme ekranından başlar, iş bitince `finish` ile mock-pos'a
+> döner; (b) kendi launcher ikonuyla **bağımsız** açılır ve dashboard'dan başlar
+> (esnaf ödeme olmadan müşteri/log görüntüler). Hangisinden başlanacağını
+> `MainActivity` gelen intent'e bakarak seçer.
+>
+> **Ayrı task:** mock-pos, app-pos'u `FLAG_ACTIVITY_NEW_TASK` ile açar — app-pos
+> KENDİ task'ında (ayrı recent-apps kartı) çalışır, çağıranın yaşam döngüsüne
+> bağımlı olmaz. mock-pos gerçek POS ödeme app'inin taklidi olduğundan app-pos'un
+> ona bağımlı olmaması hem doğru hem test için ayrılabilir.
+>
+> **Kimlik = telefon:** her müşteri bir numarayla takip edilir (claim akışının
+> temeli); aynı numara iki kez olamaz, isim serbest. `claimStatus` ayrı eksen:
+> yalnızca "app var (CLAIMED) / yok (UNCLAIMED)". Yeni müşteri: müşteri-seçme
+> ekranında isim yaz → **telefon ekranı** (numara, benzersiz) → onay.
+>
+> **OTP onayı (her yazma/ödeme için):** satıcı keyfî borç yazamasın diye her
+> DEBT/PAYMENT müşteri onayından geçer. `OtpService.requestOtp/verifyOtp` — şimdilik
+> MOCK (backend yok, her kod geçer); imzalar sabit, backend gelince (FAZ 4/5) içleri
+> değişir. app'li müşteride onay app-push, app'siz'de SMS OTP (kodda ayrık, ikisi
+> mock). **Yazma yalnızca OTP başarılı olunca** olur (tek nokta: OtpViewModel).
+>
+> **Ödeme (PAYMENT) akışı:** müşteri detayında **[Ödeme Al]** → saleFlow → **keypad**
+> (tutar) → onay → OTP → PAYMENT hareketi. Veresiye ile aynı onay+OTP+yazma
+> pipeline'ını paylaşır (`SaleViewModel.txType`).
+>
+> **saleFlow giriş mimarisi (nav_graph):** saleFlow bir nested graph'tır; Navigation
+> kuralı gereği dışarıdan yalnızca `startDestination`'ına girilebilir. `startDestination
+> = keypadFragment` — keypad ORTAK GİRİŞ KAPISI. İki akış kapıda `amountMinor`'a göre
+> ayrışır (`KeypadFragment.routeByEntry`): **DEBT** (mock-pos, `amountMinor>0`) keypad'i
+> atlayıp müşteri-seçmeye geçer (`popUpTo` ile keypad geçmişten silinir); **PAYMENT**
+> (`amountMinor==0`, müşteri belli) keypad'de kalıp tutarı aldırır. Bu, "iç node'a
+> doğrudan navigate → crash" tuzağını çözen yapıdır.
+
+**Flow A — POS (veresiye DEBT / ödeme PAYMENT, ortak pipeline):**
+1. Her ikisi de saleFlow'un giriş kapısı **keypadFragment**'tan girer:
+   **DEBT** — (ödeme app'inde) tutar → VERESİYE → app-pos (intent, `amountMinor>0`) →
+   keypad tutarı görüp müşteri-seçmeye forward eder (keypad atlanır).
+   **PAYMENT** — müşteri detayı → [Ödeme Al] (`amountMinor==0`, müşteri belli) → keypad
+   açık kalır, tutar girilir.
+2. Müşteri: listeden seç (numara hazır) **veya** yeni → **telefon ekranı** (benzersiz
+   numara). *(QR/NFC credential devri hâlâ TBD, FAZ 8.)*
+3. **Onay ekranı** (müşteri, tutar, mevcut + işlem sonrası bakiye — DEBT +, PAYMENT −).
+4. **[Onaya Gönder]** → **OTP ekranı** (müşteri onayı; mock true) →
+5. onay başarılı → append-only ledger'a **DEBT/PAYMENT hareketi** (UUID = idempotency;
+   yeni müşteriyse önce kayıt oluşturulur) → bitiş **akış türüne bağlı**: DEBT +
+   handoff ise `finish` (mock-pos'a dön), aksi halde (PAYMENT veya bağımsız) dashboard.
+   *(Faz 1'de yazım FakeRepository'ye; Faz 3'te Room + outbox, Faz 4'te Sync POST.)*
+6. Esnaf alacaklarını ledger'dan görür; **satışta yanlış geri = "iptal edilsin mi?"**
+   onayı (girilen bilgi kazara kaybolmasın). Müşteri detayında **geri oku** listeye döner.
+
+> **Reaktivite (Faz 1):** `FakeRepository` observable'dır — ledger bir
+> `MutableStateFlow`, okumalar (`observeCustomers`/`observeTransactions`/
+> `observeTotalReceivableMinor`) Flow döner. Veresiye yazılınca müşteri listesi,
+> detay ve toplam alacak **canlı** güncellenir. Room DAO Flow'ları aynı davranacağı
+> için ViewModel'ler Faz 3'te değişmeyecek.
 
 **Flow B — Müşteri (app-mobile):**
 1. QR/NFC okut → 2. app var mı? yoksa Play Store → ilk kurulum (telefon+OTP+isim)
@@ -192,6 +249,13 @@ Bu turda **yapılmaz**, ama şema/DB tasarımını erken planlamak için not:
   customerId + auth devri" soyutlamasına oturur (emülatörde QR test daha kolay).
 - **Auth implementasyonu:** OTP akışı, refresh token, EncryptedSharedPreferences.
 - **Voice input** (esnaf için, confirmation şart) ve **insight/ML** (faz 2).
+- **Satıcı hesabı / app-mobile birleşimi (TBD):** app-mobile yalnız müşteriyi değil
+  satıcıyı da kapsayacak. Müşteri basit login (telefon+OTP) ile kaydolduktan sonra
+  profil ekranındaki "satıcı hesabı girişi"nden satıcı credential'larını girer,
+  POS'tan onay alır, aynı bilgileri DB'den çekip satıcı olarak devam eder.
+  app-pos'un login-gerektiren müşteri-log görme/filtreleme özellikleri app-mobile'ın
+  satıcı tarafında da bulunur (app-pos bağımsız açılışıyla aynı yetenek, iki
+  client'ta paylaşılır). Detay zamanı gelince tasarlanacak.
 
 ---
 

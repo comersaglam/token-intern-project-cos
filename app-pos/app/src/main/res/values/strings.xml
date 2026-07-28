@@ -1,5 +1,97 @@
 <resources>
     <string name="app_name">app-pos</string>
-    <string name="pos_hello">POS — Veresiye (XML)</string>
-    <string name="pos_hello2">POS — Veresiye Deneme Texti</string>
+
+    <!-- Customer select (sale flow) -->
+    <string name="customer_select_title">Müşteri Seç</string>
+    <string name="amount_to_charge">Yazılacak Tutar</string>
+    <string name="connect_with_app">Uygulama ile bağlan</string>
+    <string name="search_customer_hint">Müşteri adı yazın</string>
+    <string name="search_prompt">Müşteriyi aramak için isim yazın</string>
+    <string name="msg_connect_mocked">QR/NFC ile bağlanma henüz eklenmedi</string>
+    <string name="create_customer_label">“%1$s” adıyla yeni müşteri ekle</string>
+
+    <!-- Keypad (in-app payment flow) -->
+    <string name="key_0">0</string>
+    <string name="key_1">1</string>
+    <string name="key_2">2</string>
+    <string name="key_3">3</string>
+    <string name="key_4">4</string>
+    <string name="key_5">5</string>
+    <string name="key_6">6</string>
+    <string name="key_7">7</string>
+    <string name="key_8">8</string>
+    <string name="key_9">9</string>
+    <string name="key_clear">C</string>
+    <string name="key_backspace">⌫</string>
+    <string name="keypad_title">Ödeme Tutarı</string>
+    <string name="payment_amount">Alınacak Ödeme</string>
+    <string name="action_continue">Devam</string>
+    <string name="msg_enter_amount">Önce tutar girin</string>
+
+    <!-- Phone entry (new customer) -->
+    <string name="phone_title">Müşteri Bilgisi</string>
+    <string name="phone_name_hint">Müşteri adı</string>
+    <string name="phone_number_hint">Telefon numarası</string>
+    <string name="msg_phone_required">Telefon numarası gerekli</string>
+    <string name="msg_phone_invalid">Geçerli bir numara girin (0555 444 3322)</string>
+    <string name="msg_phone_exists">Bu numara zaten kayıtlı</string>
+
+    <!-- Confirm screen (sale flow) -->
+    <string name="confirm_title">Onay</string>
+    <string name="confirm_customer">Müşteri</string>
+    <string name="confirm_amount_debt">Yazılacak Tutar (Veresiye)</string>
+    <string name="confirm_amount_payment">Alınacak Ödeme</string>
+    <string name="confirm_current_balance">Mevcut bakiye</string>
+    <string name="confirm_new_balance">İşlem sonrası bakiye</string>
+    <string name="confirm_write_debt">Onaya Gönder ve Yaz</string>
+    <string name="confirm_write_payment">Onaya Gönder ve Al</string>
+    <string name="confirm_cancel">İptal</string>
+    <string name="confirm_description_debt">Veresiye</string>
+    <string name="confirm_description_payment">Ödeme</string>
+    <string name="msg_credit_written">%1$s hesabına %2$s veresiye yazıldı</string>
+    <string name="msg_payment_written">%1$s hesabından %2$s ödeme alındı</string>
+
+    <!-- OTP approval (sale flow) -->
+    <string name="otp_title">Müşteri Onayı</string>
+    <string name="otp_prompt">%1$s numarasına gönderilen onay kodunu girin</string>
+    <string name="otp_code_hint">Onay kodu</string>
+    <string name="otp_verify">Onayla</string>
+    <string name="otp_sending">Onay kodu gönderiliyor…</string>
+    <string name="otp_verifying">Onaylanıyor…</string>
+    <string name="msg_otp_failed">Onay başarısız, tekrar deneyin</string>
+
+    <!-- Sale flow cancel guard -->
+    <string name="cancel_dialog_title">İşlemi iptal et</string>
+    <string name="cancel_dialog_message">Bu işlemi iptal etmek istiyor musunuz? Girdiğiniz bilgiler kaybolacak.</string>
+    <string name="cancel_dialog_confirm">İptal Et</string>
+    <string name="cancel_dialog_dismiss">Vazgeç</string>
+
+    <!-- Customer detail pay action -->
+    <string name="detail_pay">Ödeme Al</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">Dashboard</string>
+    <string name="nav_customers">Müşteriler</string>
+    <string name="nav_reports">Detaylı Bilgiler</string>
+    <string name="nav_profile">Profil</string>
+    <string name="reports_placeholder">Detaylı bilgiler yakında:\ntarih aralığı, toplam borç, toplam tahsilat</string>
+    <string name="profile_placeholder">Profil yakında:\ntelefon, e-posta, oturumu kapat</string>
+
+    <!-- Customer list screen -->
+    <string name="customer_list_title">Müşteriler</string>
+    <string name="total_receivable">Toplam Alacak</string>
+    <string name="search_customer">Müşteri ara</string>
+    <string name="filter_all">Tümü</string>
+    <string name="filter_with_debt">Borçlular</string>
+    <string name="no_customer_found">Müşteri bulunamadı</string>
+    <string name="status_claimed">Uygulaması var</string>
+    <string name="status_unclaimed">Uygulaması yok</string>
+
+    <!-- Customer detail screen -->
+    <string name="customer_detail_title">Müşteri Detayı</string>
+    <string name="current_balance">Güncel Bakiye</string>
+    <string name="transaction_history">Hareket Geçmişi</string>
+    <string name="filter_debts">Borçlar</string>
+    <string name="filter_payments">Ödemeler</string>
+
 </resources>

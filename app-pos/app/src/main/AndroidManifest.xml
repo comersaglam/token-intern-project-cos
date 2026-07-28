@@ -11,16 +11,32 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Apppos">
+        <!-- Single Activity: every screen is a Fragment in nav_graph.xml -->
+        <!-- singleTask: one instance only. The payment app opens app-pos in a new
+             task (FLAG_ACTIVITY_NEW_TASK); without singleTask a stale second copy
+             could linger and mis-route back to the payment app. With it, every
+             launch reuses the one instance via onNewIntent, where the handoff flag
+             is re-evaluated from the launching intent. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Apppos"
             android:windowSoftInputMode="adjustResize">
+            <!-- Standalone: own launcher icon, opens on the dashboard. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Veresiye handoff: the payment app (mock-pos) opens app-pos with
+                 this action + an amount extra. exported=true (above) lets another
+                 app target it. -->
+            <intent-filter>
+                <action android:name="com.example.app_pos.action.CREDIT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
     </application>

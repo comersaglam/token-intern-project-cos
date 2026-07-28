@@ -1,0 +1,30 @@
+<resources>
+    <string name="app_name">mock-pos</string>
+
+    <!-- Payment screen -->
+    <string name="payment_title">Ödeme</string>
+    <string name="payment_method">Ödeme Yöntemi</string>
+    <string name="method_card">Kart</string>
+    <string name="method_meal_card">Yemek Kartı</string>
+    <string name="method_cash">Nakit</string>
+    <string name="method_credit">VERESİYE</string>
+
+    <!-- Keypad -->
+    <string name="key_0">0</string>
+    <string name="key_1">1</string>
+    <string name="key_2">2</string>
+    <string name="key_3">3</string>
+    <string name="key_4">4</string>
+    <string name="key_5">5</string>
+    <string name="key_6">6</string>
+    <string name="key_7">7</string>
+    <string name="key_8">8</string>
+    <string name="key_9">9</string>
+    <string name="key_clear">C</string>
+    <string name="key_backspace">⌫</string>
+
+    <!-- Messages -->
+    <string name="msg_enter_amount">Önce tutar girin</string>
+    <string name="msg_method_mocked">%1$s ile ödeme — bu akış henüz bağlanmadı</string>
+    <string name="msg_credit_app_missing">Veresiye uygulaması (app-pos) kurulu değil</string>
+</resources>

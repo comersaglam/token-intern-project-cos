@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Top-level screen map: two sibling entry points.
+
+  dashboardFragment — the merchant's management view (bottom nav, see
+                      dashboard_graph.xml). This is the START destination: when
+                      app-pos is opened on its own (launcher icon) the cashier
+                      lands here, no payment required.
+  saleFlow          — the veresiye (credit) step of a sale. Entered from the
+                      payment app (mock-pos) via the CREDIT Intent; MainActivity
+                      navigates here after loading the amount.
+
+  A nested graph is also a ViewModel scope: SaleViewModel obtained with
+  navGraphViewModels(saleFlow) is shared by the sale screens and destroyed when
+  the flow is left, so each new sale starts clean.
+
+  Android Studio renders this file visually (Design tab).
+-->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/dashboardFragment">
+
+    <!--
+      One flow, two transaction types (see SaleViewModel.txType):
+        DEBT    — entered at customerSelect (amount handed over by the payment app)
+        PAYMENT — entered at keypadFragment (amount keyed in; customer already known,
+                  reached via the global action from a customer's detail screen)
+      Both converge on confirm → otp → write.
+    -->
+    <!--
+      keypadFragment is the START destination so BOTH entries land on a legal,
+      directly-reachable node (a nested graph can only be entered at its start):
+        PAYMENT — enter with amountMinor=0 + a customer; the keypad is shown so the
+                  amount can be keyed in.
+        DEBT    — enter with amountMinor>0 (from the payment app); the keypad sees a
+                  ready amount and forwards straight to customerSelect.
+    -->
+    <navigation
+        android:id="@+id/saleFlow"
+        app:startDestination="@id/keypadFragment">
+
+        <!-- Amount entry (PAYMENT) or pass-through (DEBT). Args seed the flow. -->
+        <fragment
+            android:id="@+id/keypadFragment"
+            android:name="com.example.app_pos.ui.sale.KeypadFragment"
+            android:label="@string/keypad_title"
+            tools:layout="@layout/fragment_keypad">
+
+            <argument android:name="amountMinor" app:argType="long" android:defaultValue="0L" />
+            <argument android:name="payCustomerId" app:argType="string" android:defaultValue="" />
+            <argument android:name="payCustomerName" app:argType="string" android:defaultValue="" />
+            <argument android:name="payCustomerPhone" app:argType="string" android:defaultValue="" />
+
+            <action
+                android:id="@+id/action_keypad_to_confirm"
+                app:destination="@id/confirmFragment" />
+            <!-- DEBT: amount already handed over, so skip the keypad. -->
+            <action
+                android:id="@+id/action_keypad_to_customerSelect"
+                app:destination="@id/customerSelectFragment"
+                app:popUpTo="@id/keypadFragment"
+                app:popUpToInclusive="true" />
+        </fragment>
+
+        <fragment
+            android:id="@+id/customerSelectFragment"
+            android:name="com.example.app_pos.ui.sale.CustomerSelectFragment"
+            android:label="@string/customer_select_title"
+            tools:layout="@layout/fragment_customer_select">
+
+            <!-- Existing customer picked -> straight to confirm. -->
+            <action
+                android:id="@+id/action_customerSelect_to_confirm"
+                app:destination="@id/confirmFragment" />
+            <!-- New customer -> capture name + phone first. -->
+            <action
+                android:id="@+id/action_customerSelect_to_phone"
+                app:destination="@id/phoneFragment" />
+        </fragment>
+
+        <!-- New-customer name + phone. -->
+        <fragment
+            android:id="@+id/phoneFragment"
+            android:name="com.example.app_pos.ui.sale.PhoneFragment"
+            android:label="@string/phone_title"
+            tools:layout="@layout/fragment_phone">
+
+            <argument
+                android:name="initialName"
+                android:defaultValue=""
+                app:argType="string" />
+
+            <action
+                android:id="@+id/action_phone_to_confirm"
+                app:destination="@id/confirmFragment" />
+        </fragment>
+
+        <!-- Summary; sends the entry for OTP approval (no write here). -->
+        <fragment
+            android:id="@+id/confirmFragment"
+            android:name="com.example.app_pos.ui.sale.ConfirmFragment"
+            android:label="@string/confirm_title"
+            tools:layout="@layout/fragment_confirm">
+
+            <action
+                android:id="@+id/action_confirm_to_otp"
+                app:destination="@id/otpFragment" />
+        </fragment>
+
+        <!-- Customer approval; writes the entry only on success. -->
+        <fragment
+            android:id="@+id/otpFragment"
+            android:name="com.example.app_pos.ui.sale.OtpFragment"
+            android:label="@string/otp_title"
+            tools:layout="@layout/fragment_otp" />
+    </navigation>
+
+    <!-- Reached from the action bar; hosts its own bottom-nav graph -->
+    <fragment
+        android:id="@+id/dashboardFragment"
+        android:name="com.example.app_pos.ui.dashboard.DashboardFragment"
+        android:label="@string/dashboard_title"
+        tools:layout="@layout/fragment_dashboard" />
+
+    <!-- Global action: reachable from any destination in the graph -->
+    <action
+        android:id="@+id/action_global_dashboard"
+        app:destination="@id/dashboardFragment" />
+
+    <!--
+      PAYMENT entry point: a customer's detail screen opens the sale flow (which
+      starts at the keypad) with the customer already chosen. Targets saleFlow —
+      the graph, not an inner node — because only the start is reachable from
+      outside; the keypad IS the start, so it shows. Args are forwarded to it.
+    -->
+    <action
+        android:id="@+id/action_global_pay"
+        app:destination="@id/saleFlow" />
+
+</navigation>

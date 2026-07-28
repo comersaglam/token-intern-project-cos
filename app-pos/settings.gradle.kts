@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "app-pos"
 include(":app")
- 
+include(":core-domain")

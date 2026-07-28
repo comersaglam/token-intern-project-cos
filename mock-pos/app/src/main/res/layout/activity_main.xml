@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+
+    <!-- Amount display: filled by the ViewModel, not hardcoded. -->
+    <TextView
+        android:id="@+id/amountText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="end"
+        android:textSize="44sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="50,00 TL" />
+
+    <!-- Numeric keypad: 3 columns, digits shift in from the right -->
+    <GridLayout
+        android:id="@+id/keypad"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:columnCount="3"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/amountText">
+
+        <Button
+            android:id="@+id/key1"
+            style="@style/KeypadKey"
+            android:text="@string/key_1" />
+
+        <Button
+            android:id="@+id/key2"
+            style="@style/KeypadKey"
+            android:text="@string/key_2" />
+
+        <Button
+            android:id="@+id/key3"
+            style="@style/KeypadKey"
+            android:text="@string/key_3" />
+
+        <Button
+            android:id="@+id/key4"
+            style="@style/KeypadKey"
+            android:text="@string/key_4" />
+
+        <Button
+            android:id="@+id/key5"
+            style="@style/KeypadKey"
+            android:text="@string/key_5" />
+
+        <Button
+            android:id="@+id/key6"
+            style="@style/KeypadKey"
+            android:text="@string/key_6" />
+
+        <Button
+            android:id="@+id/key7"
+            style="@style/KeypadKey"
+            android:text="@string/key_7" />
+
+        <Button
+            android:id="@+id/key8"
+            style="@style/KeypadKey"
+            android:text="@string/key_8" />
+
+        <Button
+            android:id="@+id/key9"
+            style="@style/KeypadKey"
+            android:text="@string/key_9" />
+
+        <Button
+            android:id="@+id/keyClear"
+            style="@style/KeypadKey"
+            android:text="@string/key_clear" />
+
+        <Button
+            android:id="@+id/key0"
+            style="@style/KeypadKey"
+            android:text="@string/key_0" />
+
+        <Button
+            android:id="@+id/keyBackspace"
+            style="@style/KeypadKey"
+            android:text="@string/key_backspace" />
+    </GridLayout>
+
+    <TextView
+        android:id="@+id/methodLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/payment_method"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/keypad" />
+
+    <!-- Payment methods: the first three are mocked, VERESİYE hands off to app-pos -->
+    <GridLayout
+        android:id="@+id/methods"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:columnCount="2"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/methodLabel">
+
+        <Button
+            android:id="@+id/btnCard"
+            style="@style/MethodButton"
+            android:text="@string/method_card" />
+
+        <Button
+            android:id="@+id/btnMealCard"
+            style="@style/MethodButton"
+            android:text="@string/method_meal_card" />
+
+        <Button
+            android:id="@+id/btnCash"
+            style="@style/MethodButton"
+            android:text="@string/method_cash" />
+
+        <Button
+            android:id="@+id/btnCredit"
+            style="@style/MethodButtonPrimary"
+            android:text="@string/method_credit" />
+    </GridLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

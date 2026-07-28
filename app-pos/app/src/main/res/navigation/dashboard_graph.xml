@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The dashboard's own graph, hosted inside DashboardFragment.
+
+  The three top-level destination ids match the item ids in bottom_nav_menu.xml,
+  which is how setupWithNavController connects a tab tap to a destination.
+  Customer detail is part of this graph but has no tab: it is pushed on top of
+  the Customers tab.
+-->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dashboard_graph"
+    app:startDestination="@id/customersFragment">
+
+    <fragment
+        android:id="@+id/customersFragment"
+        android:name="com.example.app_pos.ui.dashboard.customers.CustomersFragment"
+        android:label="@string/nav_customers"
+        tools:layout="@layout/fragment_customers">
+
+        <action
+            android:id="@+id/action_customers_to_customerDetail"
+            app:destination="@id/customerDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/customerDetailFragment"
+        android:name="com.example.app_pos.ui.dashboard.detail.CustomerDetailFragment"
+        android:label="@string/customer_detail_title"
+        tools:layout="@layout/fragment_customer_detail">
+
+        <argument
+            android:name="customerId"
+            app:argType="string" />
+
+        <argument
+            android:name="customerName"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/reportsFragment"
+        android:name="com.example.app_pos.ui.dashboard.reports.ReportsFragment"
+        android:label="@string/nav_reports"
+        tools:layout="@layout/fragment_reports" />
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="com.example.app_pos.ui.dashboard.profile.ProfileFragment"
+        android:label="@string/nav_profile"
+        tools:layout="@layout/fragment_profile" />
+
+</navigation>

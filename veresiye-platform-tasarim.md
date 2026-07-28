@@ -469,37 +469,132 @@ listesi, tahsilat takvimi). ML + bölgesel karşılaştırmayı FAZ 2 yap. Bu fi
 
 
 ================================================================================
-6. GELİŞTİRME BAŞLANGIÇ SIRASI: CONTRACT-FIRST + MOCK
+6. GELİŞTİRME YOL HARİTASI — FAZLAR
 ================================================================================
 
-Sıralama (en değerli):
+Tüm projenin yaklaşık planı. Her faz kendi içinde küçük adımlara bölünür; her
+adımda açıklama + onay + progress.md güncellemesi.
 
-  1. ÖNCE CONTRACT'I YAZ, MOCK'U ONDAN TÜRET.
-     Sahte JSON döndürmek yerine OpenAPI şemasını (endpoint + request/response
-     modelleri) önce tasarla. Sonra:
-       - Backend hazır değilken app'i çalıştırmak için MOCK SERVER kur
-         (Prism ile OpenAPI'den otomatik, ya da MockWebServer).
-       - App gerçek API'ye konuşuyormuş gibi geliştirilir, backend paralelde
-         yazılır.
-       - Contract-first sayesinde gerçek backend'e geçiş SIFIR REFACTOR — mock
-         ve gerçek aynı şemayı konuşur.
+--------------------------------------------------------------------------------
+FAZ 0 — TEMEL  [TAMAMLANDI]
+--------------------------------------------------------------------------------
+  - Monorepo yapısı (app-pos, app-mobile, backend, shared-contracts, docs)
+  - Mimari + akış şemaları: docs/architecture-pos.svg, docs/flow-pos.svg,
+    docs/architecture-pos.md
+  - app-pos & app-mobile: Compose template -> XML views dönüşümü
+    (AGP 9'da Kotlin built-in; ayrı Kotlin plugin YOK, viewBinding açık)
+  - Cihazda çalışan ilk XML ekranı doğrulandı
 
-  2. PREVIEW/DEMO için iki seçenek (karıştırma):
-       - UI DEMO (paydaşa göstermek): statik HTML / Figma / XML layout preview,
-         backend'e bağlanmaz. Hızlı satış aracı.
-       - UÇTAN UCA ÇALIŞAN İSKELET (mimariyi kanıtlamak): app-pos -> mock server
-         -> sahte ledger, offline sync dahil çalışır. Daha değerli, çünkü
-         mimarinin çalıştığını gösterir.
+--------------------------------------------------------------------------------
+FAZ 1 — app-pos UI + MVVM İSKELETİ (SAHTE VERİ)   [TAMAMLANDI]
+--------------------------------------------------------------------------------
+Üç çekirdek ekran, her biri ViewModel + StateFlow ile, veri kaynağı sahte:
 
-     Token bağlamında ikincisi çok daha etkili: "şu ekran güzel" yerine "offline
-     yazdım, uçağa bindim, indim, sync oldu, ledger tutarlı" diyebilmek.
+    Ekran 1: Tutar + ödeme yöntemi -> AYRI APP'E TAŞINDI (mock-pos; bkz. bölüm 7
+       "ÖDEME AYRIMI"). VERESİYE -> intent ile app-pos açılır (tutar dolu).
+    Ekran 2: Müşteri seçme (arama) -> müşteriye tıkla -> Ekran 2b
+    Ekran 2b: ONAY EKRANI (müşteri, tutar, mevcut + işlem sonrası bakiye) ->
+       [Onayla ve Yaz] -> append-only ledger'a DEBT hareketi yazılır (UUID
+       transactionId, idempotency). Onay LOKAL'dir (esnafın yanlış girişini önler);
+       müşteriye mobil bildirim FAZ 8 (client dinlemez, çağırır).
+    Ekran 3: Müşteri listesi (RecyclerView) + toplam alacak + filtre/arama
+    Ekran 4: Müşteri detayı — borç/ödeme geçmişi (ledger hareketleri)
 
-Pratik akış:
-     OpenAPI şeması -> Prism mock -> app-pos'u mock'a bağla -> offline-first
-     akışı çalıştır.
+FakeRepository artık OBSERVABLE (ledger MutableStateFlow; observeCustomers/
+observeTransactions/observeTotalReceivable Flow döner). Veresiye yazılınca liste,
+detay ve toplam alacak CANLI güncellenir. Room'a geçince DAO Flow'ları aynı
+davranacağı için ViewModel'ler değişmeyecek (offline-first "sıfır refactor" ödülü).
 
-ML için şemada "ileride buraya GET /insights gelecek" diye YER TUTUCU ENDPOINT
-bırak — böylece faz 2 sonradan yamanmış gibi durmaz, baştan planlanmış görünür.
+NEDEN UI ÖNCE, CONTRACT SONRA? Tasarımın orijinal "contract-first" tavsiyesinden
+bilinçli sapma: contract, BACKEND'E BAĞLANILACAĞI AN için doğru kuraldır.
+Ekranların hangi alanlara ihtiyaç duyduğu bilinmeden yazılan şema sonradan
+değişir. Önce UI ihtiyacı görülür, sonra contract ona göre yazılır (FAZ 2).
+
+NEDEN SAF PREVIEW DEĞİL, VIEWMODEL İLE BİRLİKTE? Ekranı sahte veriyle besleyen
+StateFlow'lu ViewModel baştan yazılırsa, gerçek veri gelince ekran ve ViewModel
+DEĞİŞMEZ (sadece sahte repository yerine gerçek Repository konur) -> sıfır
+refactor. MVVM ayrımı da baştan doğru oturur (mantık Activity'ye sızmaz).
+
+--------------------------------------------------------------------------------
+FAZ 2 — DOMAIN + CONTRACT   <-- ŞU AN BURADAYIZ (sıradaki)
+--------------------------------------------------------------------------------
+NOT (güncel sıralama kararı): Faz 2'de User modeli de doğar — tek User +
+isBuyer/isSeller bool flag'ler + nullable alanlar (telefon, e-posta, satıcı
+bilgisi). app-mobile tek app olup hem müşteri hem satıcı olabilecek; "satıcı ol"
+navbar'ı buyer/seller görünümü arasında çevirir. Mock DB formatı buna göre kurulur
+ki Room/backend gelince logic değişmesin. Sıra: Faz 2 model -> auth (telefon+OTP,
+OTP mock) -> app-mobile UI (model hazır olunca, refactor olmadan).
+
+  - :core-domain modülü: Transaction, Customer, TransactionType, ledger kuralları
+    (saf Kotlin; Android/Room/Retrofit importu YOK)
+  - shared-contracts/openapi.yaml: FAZ 1'de ortaya çıkan gerçek alan ihtiyacına
+    göre yazılır. Minimum: transaction oluştur, müşteri bakiyesi, sync;
+    yer tutucu GET /insights (faz 2 ML baştan planlanmış görünsün).
+  - KVKK burada bir TASARIM KISITI olarak devreye girer (bkz. FAZ 7): hangi veri
+    neden tutuluyor, UNCLAIMED kayıt hangi hukuki sebeple? Alanlar buna göre.
+
+--------------------------------------------------------------------------------
+FAZ 3 — LOKAL KALICILIK (ROOM)
+--------------------------------------------------------------------------------
+  - :core-data modülü: Room şeması + DAO'lar, append-only ledger tabloları
+  - Repository (kilit katman): "lokalden mi backend'den mi" kararı
+  - Sahte repository yerine gerçek Room; UI ve ViewModel değişmez (MVVM ödülü)
+
+--------------------------------------------------------------------------------
+FAZ 4 — AĞ + SYNC
+--------------------------------------------------------------------------------
+  - :core-network: Retrofit client, DTO'lar, AuthInterceptor (Bearer token)
+  - Outbox pattern + WorkManager sync engine, idempotency (transaction_id), retry
+  - Mock server (Prism ile openapi.yaml'dan) ile backend'siz uçtan uca test
+
+--------------------------------------------------------------------------------
+FAZ 5 — BACKEND
+--------------------------------------------------------------------------------
+  - API endpoint'leri (contract'a uyar), DB şeması + migration'lar
+  - Ledger yazma/okuma, idempotency kontrolü, reconciliation (gün sonu eşitlik)
+
+--------------------------------------------------------------------------------
+FAZ 6 — app-mobile (MÜŞTERİ)
+--------------------------------------------------------------------------------
+  - Telefon + OTP (kayıt = giriş, düşük friction), kullanıcı adı
+  - "Toplam borcum" sayfası, ödeme (kart), ayarlar, borç/ödeme listesi
+  - app-pos ile AYNI core katmanları, farklı sync stratejisi (pil önemli)
+
+--------------------------------------------------------------------------------
+FAZ 7 — REGÜLASYON & UYUMLULUK
+--------------------------------------------------------------------------------
+ÖNEMLİ: Bu bir "ekstra özellik" DEĞİLDİR. Bankalarla/ödeme kuruluşlarıyla
+iletişimde olan bir uygulama için CANLIYA ÇIKMANIN ÖN KOŞULUDUR — ürünü
+tamamlayan zorunlu katman. Bu yüzden ileri özelliklerden ÖNCE gelir.
+
+  - KVKK: aydınlatma metni, açık rıza akışı, veri saklama/silme süreleri,
+    veri minimizasyonu. UNCLAIMED kayıt (esnafın app'siz müşteriyi kaydetmesi)
+    başlı başına bir rıza/hukuki sebep sorusudur — erken düşünülmeli.
+  - ÖDEME REGÜLASYONU: kart verisi HİÇ SAKLANMAZ -> tokenizasyon; kart bilgisi
+    lisanslı ödeme kuruluşuna gider, bizde sadece token durur (PCI-DSS
+    kapsamından kaçınma stratejisi).
+  - DENETİM İZİ (audit log): ledger zaten append-only; ayrıca kim-ne-zaman-ne
+    yaptı kaydı ve değiştirilemezlik garantisi.
+  - VERİ İKAMETGAHI: verilerin Türkiye'de tutulması (KVKK yurt dışı aktarım).
+  - LİSANS SORUSU: faiz / vade / mikrokredi hesabı yapılacaksa bu FİNANSAL
+    HİZMET sayılır -> BDDK lisans boyutu. Ürün kapsamını belirler, Token ekibine
+    ERKEN sorulmalı.
+
+--------------------------------------------------------------------------------
+FAZ 8 — İLERİ ÖZELLİKLER
+--------------------------------------------------------------------------------
+  - QR / NFC credential devri (müşteri tanımlama), yöntem kararı
+  - FCM push ("yenilik var, sync et" / "yeni borç")
+  - Claim akışı: UNCLAIMED müşteri -> telefonla giriş -> eski borcu devral
+  - Voice input (confirmation şart), insight / ML (KVKK gate — bkz. bölüm 5)
+  - SATICI HESABI / app-mobile BİRLEŞİMİ (TBD, yön notu — detay zamanı gelince):
+    app-mobile yalnız müşteriyi değil SATICIYI DA kapsayacak. Müşteri basit login
+    (telefon+OTP) ile kaydolduktan sonra, profil ekranındaki "satıcı hesabı girişi"
+    ile satıcı credential'larını girer, POS'tan onay alır, aynı bilgileri DB'den
+    çekerek satıcı olarak devam eder. app-pos'taki login-gerektiren müşteri-log
+    görme / filtreleme özellikleri app-mobile'ın satıcı tarafında da bulunur.
+    (Bu, yukarıdaki app-pos "bağımsız açılış = yönetim/log görüntüleme" kararıyla
+    aynı yeteneğin iki client'ta paylaşılması demektir.)
 
 
 ================================================================================
@@ -518,6 +613,138 @@ bırak — böylece faz 2 sonradan yamanmış gibi durmaz, baştan planlanmış 
 - Hepsi TEK monorepo'da yan yana klasör (branch değil).
 - Branch = "hangi iş", klasör = "hangi parça".
 - shared-contracts = üçünün aynı JSON'u konuşma garantisi + kod/mock üretimi.
-- Başlangıç: contract-first + mock server + offline-first iskelet.
+- Başlangıç: UI+ViewModel (sahte veri) -> contract -> Room -> ağ (bkz. bölüm 6).
 - Voice input iyi (confirmation şart). ML faz 2 (KVKK gate).
+- Regülasyon ekstra özellik değil, canlıya çıkmanın ön koşulu (FAZ 7).
 ================================================================================
+
+
+================================================================================
+7. ALINAN KARARLAR
+================================================================================
+Bu belge boyunca açık bırakılan sorular ve tartışma sonucu verilen kararlar.
+(Kararlar tartışılarak alındı; gerekçeleri docs/architecture-pos.md'de detaylı.)
+
+--------------------------------------------------------------------------------
+MİMARİ
+--------------------------------------------------------------------------------
+- ÖDEME AYRIMI: ÖDEME app-pos'un PARÇASI DEĞİLDİR.
+  Token'ın POS cihazlarında zaten ayrı bir ödeme uygulaması var. Ödeme ekranı
+  (keypad + tutar + Kart/Yemek Kartı/Nakit) ONA aittir; veresiye bizim AYRI
+  app'imizdir. Repo'da bunu 'mock-pos' klasörü (ayrı Gradle projesi, ayrı APK,
+  applicationId com.example.mock_pos) TAKLİT eder — POS'un gerçek ödeme app'inin
+  yerine geçer.
+    AKIŞ: mock-pos'ta tutar girilir -> [VERESİYE] -> app-pos bir INTENT ile açılır.
+    KÖPRÜ: custom action 'com.example.app_pos.action.CREDIT' + extra 'amount_minor'
+           (Long, kuruş). app-pos MainActivity'de eşleşen intent-filter + onCreate
+           intent okuması var. İki app birbirini import ETMEZ (ayrı APK); köprü
+           sabitleri iki tarafta KOPYALANIR (ileride shared-contracts'a alınabilir).
+    İKİ GİRİŞ NOKTASI: app-pos hem (a) mock-pos'tan veresiye handoff'u ile (doğrudan
+           müşteri seçme ekranından başlar, iş bitince finish -> mock-pos'a döner),
+           hem de (b) KENDİ LAUNCHER İKONUYLA BAĞIMSIZ açılır (dashboard'dan başlar).
+           (b) şart çünkü esnaf ödeme olmadan da müşteri/log görüntüleyebilmeli.
+           Hangisinden başlanacağını MainActivity gelen intent'e bakarak seçer
+           (Android'de app-to-app handoff'un standart deseni).
+    NOT (finish tetikleyicisi): ledger yazımı henüz yok; handoff'ta 'iş bitti'
+           şimdilik müşteri seçimine bağlı. Onay/ledger adımı gelince finish oraya
+           taşınacak. İleride setResult ile başarı/iptal mock-pos'a döndürülebilir.
+
+- KİMLİK = TELEFON NUMARASI + OTP ONAYI (Tur 9).
+  Her müşteri bir telefon numarasıyla takip edilir (claim akışının temeli); aynı
+  numara iki kez olamaz, isim serbest. claimStatus artık SADECE "app var/yok"
+  eksenidir (numara her kayıtta dolu). Yeni müşteri: isim + numara (benzersiz).
+  HER veresiye (DEBT) ve ödeme (PAYMENT) MÜŞTERİ OTP ONAYINDAN geçer — satıcı
+  keyfî borç yazamasın. OtpService.requestOtp/verifyOtp şimdilik MOCK (backend
+  yok, her kod geçer); imza sabit, backend gelince (FAZ 4/5) içi değişir. Yazma
+  yalnızca onay başarılıysa (tek nokta). Ödeme akışı müşteri detayındaki [Ödeme
+  Al] → keypad → onay → OTP; veresiye ile aynı pipeline (SaleViewModel.txType).
+  AÇIK GERİLİM (backend'de çözülecek): OTP zorunlu ↔ offline-first. OTP internet
+  ister; tasarım "offline yazabilmeli" diyordu. Şimdilik mock bypass; backend
+  gelince offline'da onay politikası (ör. PENDING durumu) yeniden kararlaştırılacak.
+
+- MODÜL YAPISI: ÇOK MODÜLLÜ GRADLE.
+    :app          -> UI (Activity/Fragment + XML layout + ViewModel)
+    :core-domain  -> saf Kotlin; modeller + ledger kuralları (bağımlılığı YOK)
+    :core-data    -> Room + Repository + Sync engine + outbox
+    :core-network -> Retrofit + DTO + AuthInterceptor
+  Bağımlılık yönü: :app -> :core-data -> {:core-domain, :core-network};
+                   :core-network -> :core-domain; :core-domain -> (hiçbir şey)
+  NEDEN: Sınırları DERLEYİCİ zorlar. Tek modülde katman ayrımı sadece disipline
+  bağlıdır; domain'e yanlışlıkla @Entity eklemek derlenir ve mimari erozyonu
+  (big ball of mud) başlar. Çok modülde bu DERLEME HATASI olur. Para/ledger
+  domain'inde bu gerçek bir kazanç.
+  NOT: FAZ 1'de kod henüz :app içinde; modüllere ayırma FAZ 2-4'te yapılır
+  (var olan kodu taşımak, boş modüllere dosya dağıtmaktan öğreticidir).
+
+- UI TEKNOLOJİSİ: XML VIEWS + ViewBinding (Compose değil).
+  ViewBinding = XML'deki id'li view'lar için otomatik üretilen tip-güvenli sınıf
+  (findViewById yerine). AGP 9'da Kotlin BUILT-IN gelir -> ayrı kotlin-android
+  plugin'i EKLENMEZ (eklenirse "Cannot add extension with name 'kotlin'" hatası).
+
+--------------------------------------------------------------------------------
+VERİ
+--------------------------------------------------------------------------------
+- PARA TİPİ: amountMinor: Long — KURUŞ cinsinden. 50 TL = 5000.
+  Float/Double YOK (kayan nokta para hatası yapar). BigDecimal de değil
+  (Room/JSON serileştirmede ekstra converter yükü, bu ölçekte gereksiz).
+
+- LEDGER: append-only. Bakiye hiçbir yerde tek sayı olarak TUTULMAZ;
+  bakiye = hareketlerin toplamı. Her hareketin transaction_id'si (UUID) var
+  -> idempotency (retry'da çift işlenmez).
+
+- MÜŞTERİ MODELİ: claimStatus (UNCLAIMED / CLAIMED).
+  Gerçek dünyada müşterilerin çoğu app kullanmaz. Esnaf sadece İSİM girerek
+  müşteri açabilir (UNCLAIMED). Müşteri sonra aynı telefon numarasıyla giriş
+  yapınca backend eski borç geçmişini o hesaba CLAIM eder. Sistemin gerçek
+  dünyada çalışmasını sağlayan şey budur.
+
+- ÜÇ AYRI TEMSİL: Transaction (domain) / TransactionEntity (Room) /
+  TransactionDto (JSON). Değişme sebepleri farklı olduğu için ayrılır;
+  aralarında mapper fonksiyonlarıyla çevrilir.
+
+--------------------------------------------------------------------------------
+AUTH  (bölüm 2/3'te açık bırakılmıştı)
+--------------------------------------------------------------------------------
+- app-pos (ESNAF): CİHAZ KAYDI + TOKEN YENİLEME.
+  İlk kurulumda bir kez giriş -> backend uzun ömürlü REFRESH TOKEN verir ->
+  sonra her açılışta sessiz ACCESS TOKEN. Esnaf bir daha şifre görmez.
+  (Square/SumUp/iZettle deseni. Cihaz dükkanda sabit, tek kullanıcı.)
+
+- app-mobile (MÜŞTERİ): TELEFON + OTP (SMS kod).
+  Şifre yok, hatırlanacak bir şey yok. KAYIT = GİRİŞ (aynı akış, ayrı register
+  ekranı yok). Sonra kullanıcı adı girilir.
+  NEDEN: müşteri yaşlı/aceleci olabilir; friction düşman. Şifreli register
+  kötü, sosyal login Google hesabı şartı getirir.
+
+- ORTAK: Token her isteğe :core-network'teki AuthInterceptor (OkHttp) ile
+  otomatik eklenir; her Retrofit fonksiyonuna elle yazılmaz. Token'lar şifreli
+  saklanır (EncryptedSharedPreferences / DataStore + Keystore).
+
+--------------------------------------------------------------------------------
+POS DONANIMI  (bölüm 3.2'de "AÇIK KARAR" olarak işaretlenmişti -> KAPANDI)
+--------------------------------------------------------------------------------
+- KARAR: NORMAL ANDROID TELEFON varsayımı. (Senior eng onayı: medium-size
+  Android telefon emülatörü yeterli.) Cihazın sürekli prizde olacağı biliniyor
+  ama şimdilik FOREGROUND SERVICE KULLANILMIYOR.
+- Sync stratejisi: WorkManager (network-triggered) + app açılışında sync;
+  FCM push ileride (FAZ 8). app-mobile ile AYNI core-data katmanı.
+- Foreground service / kiosk modu ileride gerekirse eklenir (dedicated donanıma
+  geçilirse). Şimdi eklemek emülatörde test zorluğu + erken karmaşıklık getirir.
+
+--------------------------------------------------------------------------------
+GELİŞTİRME YÖNTEMİ
+--------------------------------------------------------------------------------
+- Sıra: UI+ViewModel (sahte veri) -> contract -> Room -> ağ -> backend ->
+  app-mobile -> regülasyon -> ileri özellikler. (Detay: bölüm 6)
+- Kısa adımlar, her adımda açıklama + onay, progress.md güncellemesi.
+- Overengineering yapma; ihtiyaç doğmadan soyutlama ekleme.
+================================================================================
+
+
+
+
+--------------------------------------------------------------------------------
+Ek özellik updateleri
+--------------------------------------------------------------------------------
+
+- Alış satış zamanını ve parasını tutuyoruz ya. başka bir db tablosunda da web fetch ile o saatteki dolar euro ve altın dönüşümlerini de tutabiliriz ileride. Böylece microcredit veya enflasyona satıcının yenilmemesi tarzı konuları implemente etmekte geriye dönük bilgimiz her zaman db de olur ve webfetch ile zaman kaybetmeyiz bu hesaplarda.

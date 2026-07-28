@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  In-app PAYMENT entry: key in how much the customer is paying, then continue to
+  confirm. (The DEBT flow keys the amount in the separate payment app, so this
+  screen only appears when collecting a payment from a customer's detail screen.)
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/amountLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/payment_amount"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/amountText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:textColor="?attr/colorOnSurface"
+        android:textSize="44sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/amountLabel"
+        tools:text="50,00 TL" />
+
+    <GridLayout
+        android:id="@+id/keypad"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:columnCount="3"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/amountText">
+
+        <Button android:id="@+id/key1" style="@style/KeypadKey" android:text="@string/key_1" />
+        <Button android:id="@+id/key2" style="@style/KeypadKey" android:text="@string/key_2" />
+        <Button android:id="@+id/key3" style="@style/KeypadKey" android:text="@string/key_3" />
+        <Button android:id="@+id/key4" style="@style/KeypadKey" android:text="@string/key_4" />
+        <Button android:id="@+id/key5" style="@style/KeypadKey" android:text="@string/key_5" />
+        <Button android:id="@+id/key6" style="@style/KeypadKey" android:text="@string/key_6" />
+        <Button android:id="@+id/key7" style="@style/KeypadKey" android:text="@string/key_7" />
+        <Button android:id="@+id/key8" style="@style/KeypadKey" android:text="@string/key_8" />
+        <Button android:id="@+id/key9" style="@style/KeypadKey" android:text="@string/key_9" />
+        <Button android:id="@+id/keyClear" style="@style/KeypadKey" android:text="@string/key_clear" />
+        <Button android:id="@+id/key0" style="@style/KeypadKey" android:text="@string/key_0" />
+        <Button android:id="@+id/keyBackspace" style="@style/KeypadKey" android:text="@string/key_backspace" />
+    </GridLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnContinue"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:layout_marginBottom="16dp"
+        android:text="@string/action_continue"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
