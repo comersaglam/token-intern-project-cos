@@ -49,6 +49,19 @@
         android:id="@+id/profileFragment"
         android:name="com.example.app_pos.ui.dashboard.profile.ProfileFragment"
         android:label="@string/nav_profile"
-        tools:layout="@layout/fragment_profile" />
+        tools:layout="@layout/fragment_profile">
+
+        <!-- Pairing pushed on top of Profile (like customer detail on Customers);
+             the dashboard's inner Back returns here. -->
+        <action
+            android:id="@+id/action_profile_to_pairing"
+            app:destination="@id/pairingFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/pairingFragment"
+        android:name="com.example.app_pos.ui.dashboard.profile.PairingFragment"
+        android:label="@string/pairing_title"
+        tools:layout="@layout/fragment_pairing" />
 
 </navigation>

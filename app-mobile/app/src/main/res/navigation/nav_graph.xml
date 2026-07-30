@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Top-level screen map (app-mobile).
+
+  loginFragment     — the login gate and START destination: a launch lands here,
+                      and only a signed-in customer is sent on to the dashboard.
+  dashboardFragment — the customer's view (bottom nav: Borçlarım / Onaylar /
+                      Profil, see dashboard_graph.xml). Reached after login.
+
+  No sale flow / CREDIT handoff here (that is app-pos, the payment-app side).
+-->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/loginFragment">
+
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="com.example.app_mobile.ui.login.LoginFragment"
+        android:label="@string/login_title"
+        tools:layout="@layout/fragment_login" />
+
+    <fragment
+        android:id="@+id/dashboardFragment"
+        android:name="com.example.app_mobile.ui.dashboard.DashboardFragment"
+        android:label="@string/dashboard_title"
+        tools:layout="@layout/fragment_dashboard" />
+
+    <!-- After login: go to the dashboard and pop the gate, so Back exits the app. -->
+    <action
+        android:id="@+id/action_global_dashboard_after_login"
+        app:destination="@id/dashboardFragment"
+        app:popUpTo="@id/loginFragment"
+        app:popUpToInclusive="true" />
+
+    <!-- Logout: return to the gate and clear everything above it. -->
+    <action
+        android:id="@+id/action_global_login"
+        app:destination="@id/loginFragment"
+        app:popUpTo="@id/nav_graph"
+        app:popUpToInclusive="true" />
+
+</navigation>

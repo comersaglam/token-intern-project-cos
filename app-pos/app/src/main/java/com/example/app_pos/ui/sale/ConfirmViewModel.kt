@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.app_pos.data.FakeRepository
 import com.example.app_pos.model.TransactionType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -20,14 +23,19 @@ import kotlinx.coroutines.flow.stateIn
  * customerId is empty for a brand-new customer (created only at write time), so
  * the balance is treated as zero in that case.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ConfirmViewModel(private val customerId: String) : ViewModel() {
 
-    /** The customer's current balance, kept in sync with the ledger; 0 if new. */
+    /** The customer's current balance with the signed-in seller; 0 if new. */
     val currentBalanceMinor: StateFlow<Long> =
         if (customerId.isEmpty()) {
             MutableStateFlow(0L)
         } else {
-            FakeRepository.observeTransactions(customerId)
+            FakeRepository.observeCurrentUser()
+                .flatMapLatest { user ->
+                    if (user == null) flowOf(emptyList())
+                    else FakeRepository.observeTransactions(user.userId, customerId)
+                }
                 .map { txs ->
                     txs.sumOf { tx ->
                         when (tx.type) {

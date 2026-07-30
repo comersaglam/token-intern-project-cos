@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "app-mobile"
 include(":app")
- 
+include(":core-domain")

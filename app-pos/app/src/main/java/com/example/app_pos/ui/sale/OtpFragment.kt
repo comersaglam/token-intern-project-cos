@@ -41,7 +41,10 @@ class OtpFragment : Fragment() {
         get() {
             val sel = saleViewModel.selectedCustomer.value ?: return false
             if (sel.isNew) return false
-            return FakeRepository.findCustomerByPhone(sel.phone)?.claimStatus == ClaimStatus.CLAIMED
+            // Only claimStatus matters here (app vs SMS), which is seller-independent;
+            // the seller scope just satisfies the balance-aware lookup signature.
+            val sellerId = FakeRepository.currentSellerId() ?: return false
+            return FakeRepository.findCustomerByPhone(sellerId, sel.phone)?.claimStatus == ClaimStatus.CLAIMED
         }
 
     override fun onCreateView(

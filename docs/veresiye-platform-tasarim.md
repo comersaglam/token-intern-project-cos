@@ -569,11 +569,30 @@ FAZ 5 — BACKEND
   - Ledger yazma/okuma, idempotency kontrolü, reconciliation (gün sonu eşitlik)
 
 --------------------------------------------------------------------------------
-FAZ 6 — app-mobile (MÜŞTERİ)
+FAZ 6 — app-mobile (MÜŞTERİ)   <-- BUYER dikeyi YAPILDI (Tur 17, mock üstünde)
 --------------------------------------------------------------------------------
-  - Telefon + OTP (kayıt = giriş, düşük friction), kullanıcı adı
-  - "Toplam borcum" sayfası, ödeme (kart), ayarlar, borç/ödeme listesi
-  - app-pos ile AYNI core katmanları, farklı sync stratejisi (pil önemli)
+DURUM (Tur 17 + 18 + 19): app-mobile'ın ALICI (buyer) VE SATICI (seller) tarafı kuruldu
+(mock, RAM). :core-domain KOPYALANDI (ayrı Gradle projesi; paket app_pos.model korundu;
+mock-pos deseni). Token mavi palet (Tur 18). Seller dikeyi (Tur 19): "Satıcı ol" → dükkan
+ismi + POS eşleştirme (numara-eksenli mock) → dinamik "Müşterilerim" sekmesi + müşteri
+detayı + popup veresiye/ödeme yazma. Yazma **ApprovalService** ile onaya gider (app'li
+müşteri → Onaylar kartı; app'siz → anında mock SMS-OTP); buyer ödemesi de aynı yoldan →
+iki yön simetrik, tek yazma noktası. Detay: docs/architecture-pos.md §6 Flow B + progress.md
+Tur 17-19.
+
+  - Telefon + OTP (kayıt = giriş, düşük friction) — mock; giriş anında CLAIM (o numaralı
+    UNCLAIMED Customer'lar CLAIMED, eski borç devralınır — claimCustomerForUser gerçek kod).
+  - "Borçlarım" = tüm satıcılar boyunca, satıcıya göre gruplu (buyer-scoped okuma =
+    seller-scoped observeCustomers'ın SİMETRİĞİ) → satıcı detayı + [Ödeme Yap].
+  - "Onaylar" = bekleyen veresiye/ödeme onayı → Onayla/Reddet KARTI (OTP kodu değil;
+    app'li müşteride onay app-push). FOREGROUND POLLING (dinlemez/çağırır; FCM YOK);
+    background WorkManager = FAZ 4. Mock: PendingApproval app-mobile'ın kendi repo'sunda.
+  - Profil: isim/telefon/email + roller + "Satıcı ol" (placeholder).
+  - app-pos ile AYNI core-domain (kopya), farklı sync stratejisi (pil önemli).
+
+  KARAR (Tur 17) — QR/NFC → NUMARA EŞLEŞMESİ: POS↔müşteri onayı telefon numarası + OTP/push
+  ekseninde. Eski postaki QR/NFC yerine numara eşleşmesi. Bu tur app-pos'a DOKUNULMADI;
+  plan notu: app-pos'un QR/NFC alanları numara eşleşmesine taşınacak (QR/NFC devri = FAZ 8).
 
 --------------------------------------------------------------------------------
 FAZ 7 — REGÜLASYON & UYUMLULUK
@@ -704,6 +723,31 @@ VERİ
 - LEDGER: append-only. Bakiye hiçbir yerde tek sayı olarak TUTULMAZ;
   bakiye = hareketlerin toplamı. Her hareketin transaction_id'si (UUID) var
   -> idempotency (retry'da çift işlenmez).
+
+- SAHİPLİK TRANSACTION'DA, CUSTOMER'DA DEĞİL (Tur 16 — mimari düzeltme):
+  Bir müşteri FARKLI SATICILARDAN alışveriş yapabilir. Aynı telefon (kimlik) tek
+  Customer'dır ama farklı satıcılara farklı borcu olur. Bu yüzden Transaction'da
+  hem seller_id hem customer_id (buyer) tutulur; BAKİYE = (seller, customer)
+  ÇİFTİNİN toplamı. Customer'a seller_id koymak yanlış olurdu (aynı numara için
+  çok kayıt gerekir, "telefon=benzersiz kimlik" kırılır). "Satıcının müşterisi" =
+  o satıcı ile en az bir transaction'ı olan customer (SQL: DISTINCT customer_id
+  WHERE seller_id=?). observe* metodları seller-scoped. claimedByUserId AYRI eksen
+  (müşterinin app hesabı), seller_id ile karıştırma.
+
+- SESSION/TOKEN AYRI TUTULUR (User'a değil — Tur 15):
+  Session(userId, token, loggedInAt, expiresAt) repository'de. User = kimlik
+  (domain); Session = "kim login, ne zamana kadar". Session.userId sayesinde kim
+  login'se onun profili/ledger'ı görünür (hardcoded değil). Backend'de token
+  DataStore/Room'da tutulacak, User tablosunda DEĞİL. Mock: RAM'de, 7 gün TTL kodda
+  gerçek ama app restart'ta sıfırlanır (kalıcılık FAZ 3).
+
+- LOGIN = GİRİŞ / REGISTER = KAYIT, AYNI EKRAN (Tur 16):
+  Numara girilir -> kayıtlıysa (findUserByPhone) login; değilse "xxx numarasıyla
+  kayıt olacaksınız" onayı -> registerUser + login. app-pos'tan register = SATICI
+  (isSeller=true); app-mobile'dan = alıcı. displayName boş başlar, profilden dolar.
+  (Docs "kayıt=giriş" deseni.) NOT: telefon formatı util'i (PhoneFormat.toStored)
+  IDEMPOTENT olmalı -> E.164 çıktısını tekrar dönüştürmek null vermemeli (Tur 16'da
+  bu sinsi bug bulunup düzeltildi).
 
 - MÜŞTERİ MODELİ: claimStatus (UNCLAIMED / CLAIMED).
   Gerçek dünyada müşterilerin çoğu app kullanmaz. Esnaf sadece İSİM girerek

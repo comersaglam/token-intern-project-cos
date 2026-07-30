@@ -1,4 +1,104 @@
 <resources>
-    <string name="app_name">app-mobile</string>
-    <string name="mobile_hello">Müşteri — Veresiye (XML)</string>
+    <string name="app_name">Veresiye</string>
+
+    <!-- Login / register -->
+    <string name="login_title">Veresiye</string>
+    <string name="login_subtitle">Telefon numaranızla giriş yapın</string>
+    <string name="login_phone_hint">Telefon (0555 444 3322)</string>
+    <string name="login_button">Giriş yap</string>
+    <string name="msg_login_wrong_number">Geçersiz numara, tekrar deneyin</string>
+    <string name="register_confirm_title">Kayıt ol</string>
+    <string name="register_confirm_message">%1$s numarasıyla yeni bir hesap oluşturulacak. Devam edilsin mi?</string>
+    <string name="register_confirm_positive">Kayıt ol</string>
+    <string name="register_confirm_negative">Vazgeç</string>
+
+    <!-- Dashboard tabs -->
+    <string name="dashboard_title">Veresiye</string>
+    <string name="nav_debts">Borçlarım</string>
+    <string name="nav_approvals">Onaylar</string>
+    <string name="nav_profile">Profil</string>
+
+    <!-- Debts (buyer home) -->
+    <string name="debts_total_label">Toplam borcum</string>
+    <string name="debts_empty">Hiç borcunuz yok. 🎉</string>
+
+    <!-- Seller detail -->
+    <string name="seller_detail_title">Satıcı</string>
+    <string name="detail_balance_label">Bu satıcıya borcum</string>
+    <string name="detail_pay_button">Ödeme Yap</string>
+    <string name="filter_all">Tümü</string>
+    <string name="filter_debt">Borçlar</string>
+    <string name="filter_payment">Ödemeler</string>
+    <string name="detail_empty">Bu satıcıyla henüz bir hareket yok.</string>
+
+    <!-- Pay dialog -->
+    <string name="pay_dialog_title">Ödeme tutarı</string>
+    <string name="pay_dialog_hint">Tutar (TL)</string>
+    <string name="pay_dialog_positive">Öde</string>
+    <string name="pay_dialog_negative">Vazgeç</string>
+    <string name="pay_done">Ödeme alındı</string>
+
+    <!-- Approvals -->
+    <string name="approvals_empty">Bekleyen onayınız yok.</string>
+    <string name="approval_debt_label">Veresiye onayı</string>
+    <string name="approval_payment_label">Ödeme onayı</string>
+    <string name="approval_approve">Onayla</string>
+    <string name="approval_reject">Reddet</string>
+    <string name="approval_approved">Onaylandı</string>
+    <string name="approval_rejected">Reddedildi</string>
+
+    <!-- Seller: reports placeholder tab -->
+    <string name="nav_reports">Detaylı Bilgiler</string>
+    <string name="reports_placeholder">Detaylı bilgiler yakında:\ntarih aralığı, toplam borç, toplam tahsilat</string>
+
+    <!-- Seller: customer list (Müşterilerim) -->
+    <string name="nav_customers">Müşterilerim</string>
+    <string name="customers_title">Müşterilerim</string>
+    <string name="total_receivable">Toplam alacak</string>
+    <string name="search_customer">Müşteri ara</string>
+    <string name="filter_with_debt">Borçlular</string>
+    <string name="no_customer_found">Müşteri bulunamadı</string>
+    <string name="status_claimed">Uygulaması var</string>
+    <string name="status_unclaimed">Uygulaması yok</string>
+
+    <!-- Seller: customer detail + write actions -->
+    <string name="customer_detail_title">Müşteri</string>
+    <string name="current_balance">Güncel bakiye</string>
+    <string name="detail_write_debt">Veresiye Yaz</string>
+    <string name="detail_take_payment">Ödeme Al</string>
+    <string name="detail_approval_sent">Onaya gönderildi</string>
+    <string name="detail_written">Deftere yazıldı</string>
+
+    <!-- Become a seller + pairing -->
+    <string name="become_seller_title">Satıcı ol</string>
+    <string name="become_seller_message">Dükkan adınızı girin. Satıcı olduğunuzda müşteri defterinize erişebilirsiniz.</string>
+    <string name="become_seller_hint">Dükkan adı</string>
+    <string name="become_seller_positive">Satıcı ol</string>
+    <string name="profile_update_shop">Dükkan adını güncelle</string>
+    <string name="pairing_title">POS Eşleştirme</string>
+    <string name="pairing_prompt">Bu uygulamayı POS cihazınıza telefon numaranız üzerinden eşleştirin.\nGerçek eşleştirme ileride eklenecek.</string>
+    <string name="pairing_confirm">Eşleştir</string>
+    <string name="pairing_pairing">Eşleştiriliyor…</string>
+    <string name="pairing_done">Eşleştirme tamamlandı</string>
+    <string name="profile_pair_prompt">Bu uygulama POS cihazınızla eşleşmemiş.</string>
+    <string name="profile_pair_button">POS ile eşleştir</string>
+    <string name="profile_paired">POS ile eşleşti ✓</string>
+    <string name="dialog_save">Kaydet</string>
+    <string name="dialog_cancel">Vazgeç</string>
+
+    <!-- Profile -->
+    <string name="profile_name_label">Ad Soyad</string>
+    <string name="profile_phone_label">Telefon</string>
+    <string name="profile_email_label">E-posta</string>
+    <string name="profile_roles_label">Roller</string>
+    <string name="profile_shop_label">Dükkan</string>
+    <string name="profile_role_buyer">Alıcı</string>
+    <string name="profile_role_seller">Satıcı</string>
+    <string name="profile_not_set">— eklenmemiş —</string>
+    <string name="profile_edit">Düzenle</string>
+    <string name="profile_edit_name_title">Ad Soyad</string>
+    <string name="profile_edit_email_title">E-posta</string>
+    <string name="profile_become_seller">Satıcı ol</string>
+    <string name="profile_become_seller_soon">Satıcı olma yakında eklenecek.</string>
+    <string name="profile_logout">Çıkış yap</string>
 </resources>

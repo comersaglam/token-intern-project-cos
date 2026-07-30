@@ -1,5 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Appmobile" parent="Theme.Material3.DayNight.NoActionBar" />
+    <!--
+      Fixed dark theme (like app-pos, not DayNight): the two apps share the Token
+      palette so they read as one product. The action bar is kept so Navigation
+      can drive the screen title and up arrow via setupActionBarWithNavController.
+    -->
+    <style name="Theme.Appmobile" parent="Theme.Material3.Dark">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_background</item>
+
+        <item name="colorSecondary">@color/accent</item>
+        <item name="colorOnSecondary">@color/on_accent</item>
+        <item name="colorSecondaryContainer">@color/surface_elevated</item>
+        <item name="colorOnSecondaryContainer">@color/on_background</item>
+
+        <item name="colorTertiary">@color/accent</item>
+        <item name="colorOnTertiary">@color/on_accent</item>
+        <item name="colorTertiaryContainer">@color/primary_container</item>
+        <item name="colorOnTertiaryContainer">@color/on_background</item>
+
+        <item name="colorError">@color/error</item>
+        <item name="colorOnError">@color/on_primary</item>
+        <item name="colorErrorContainer">@color/error_container</item>
+        <item name="colorOnErrorContainer">@color/on_background</item>
+
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorSurface">@color/background</item>
+        <item name="colorOnSurface">@color/on_background</item>
+        <item name="colorSurfaceVariant">@color/surface</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+
+        <item name="colorSurfaceContainerLowest">@color/background</item>
+        <item name="colorSurfaceContainerLow">@color/surface</item>
+        <item name="colorSurfaceContainer">@color/surface</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_elevated</item>
+        <item name="colorSurfaceContainerHighest">@color/surface_elevated</item>
+
+        <item name="colorControlHighlight">@color/primary_container</item>
+
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorOutlineVariant">@color/outline</item>
+
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/background</item>
+
+        <!-- Flatten the action bar onto the background (no raised surface tint). -->
+        <item name="actionBarTheme">@style/ThemeOverlay.Appmobile.ActionBar</item>
+        <item name="bottomNavigationStyle">@style/Widget.Appmobile.BottomNav</item>
+    </style>
+
+    <style name="ThemeOverlay.Appmobile.ActionBar" parent="ThemeOverlay.Material3.ActionBar">
+        <item name="colorSurface">@color/background</item>
+        <item name="colorOnSurface">@color/on_background</item>
+        <item name="elevationOverlayEnabled">false</item>
+    </style>
+
+    <!-- Tabs: the active one in brand blue, the rest muted (see color/bottom_nav_item). -->
+    <style name="Widget.Appmobile.BottomNav" parent="Widget.Material3.BottomNavigationView">
+        <item name="android:background">@color/surface</item>
+        <item name="itemIconTint">@color/bottom_nav_item</item>
+        <item name="itemTextColor">@color/bottom_nav_item</item>
+        <item name="itemActiveIndicatorStyle">
+            @style/Widget.Appmobile.BottomNav.ActiveIndicator
+        </item>
+    </style>
+
+    <style name="Widget.Appmobile.BottomNav.ActiveIndicator"
+        parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/primary_container</item>
+    </style>
+
 </resources>

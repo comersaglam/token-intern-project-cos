@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Seller tab set: the buyer tabs plus "Müşterilerim". Used once the signed-in user
+  is a seller (DashboardFragment swaps to this menu). Item ids match destination ids
+  in dashboard_graph.xml, which is what setupWithNavController wires up.
+-->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/debtsFragment"
+        android:icon="@drawable/ic_debts"
+        android:title="@string/nav_debts" />
+
+    <item
+        android:id="@+id/customersFragment"
+        android:icon="@drawable/ic_customers"
+        android:title="@string/nav_customers" />
+
+    <item
+        android:id="@+id/reportsFragment"
+        android:icon="@drawable/ic_reports"
+        android:title="@string/nav_reports" />
+
+    <item
+        android:id="@+id/approvalsFragment"
+        android:icon="@drawable/ic_approvals"
+        android:title="@string/nav_approvals" />
+
+    <item
+        android:id="@+id/profileFragment"
+        android:icon="@drawable/ic_profile"
+        android:title="@string/nav_profile" />
+
+</menu>

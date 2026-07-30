@@ -54,9 +54,11 @@ class CustomerDetailFragment : Fragment() {
     }
 
     // The customer's phone: identity for the pay flow and how the merchant tells
-    // two same-named customers apart. Read once here.
+    // two same-named customers apart. Read once here. (Only the phone is used, which
+    // is seller-independent; the seller scope just satisfies the lookup signature.)
     private val phone: String by lazy {
-        FakeRepository.findCustomerById(args.customerId)?.phone.orEmpty()
+        val sellerId = FakeRepository.currentSellerId() ?: return@lazy ""
+        FakeRepository.findCustomerById(sellerId, args.customerId)?.phone.orEmpty()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

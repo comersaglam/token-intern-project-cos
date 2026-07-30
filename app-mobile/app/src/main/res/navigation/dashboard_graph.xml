@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The dashboard's own graph, hosted inside DashboardFragment.
+
+  The three top-level destination ids match the item ids in bottom_nav_menu.xml,
+  which is how setupWithNavController connects a tab tap to a destination. Seller
+  detail is part of this graph but has no tab: it is pushed on top of Borçlarım.
+-->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/dashboard_graph"
+    app:startDestination="@id/debtsFragment">
+
+    <fragment
+        android:id="@+id/debtsFragment"
+        android:name="com.example.app_mobile.ui.debts.DebtsFragment"
+        android:label="@string/nav_debts"
+        tools:layout="@layout/fragment_debts">
+
+        <action
+            android:id="@+id/action_debts_to_sellerDetail"
+            app:destination="@id/sellerDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/sellerDetailFragment"
+        android:name="com.example.app_mobile.ui.sellerdetail.SellerDetailFragment"
+        android:label="@string/seller_detail_title"
+        tools:layout="@layout/fragment_seller_detail">
+
+        <argument android:name="sellerId" app:argType="string" />
+        <argument android:name="shopName" app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/approvalsFragment"
+        android:name="com.example.app_mobile.ui.approvals.ApprovalsFragment"
+        android:label="@string/nav_approvals"
+        tools:layout="@layout/fragment_approvals" />
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="com.example.app_mobile.ui.profile.ProfileFragment"
+        android:label="@string/nav_profile"
+        tools:layout="@layout/fragment_profile">
+
+        <!-- Pairing pushed on top of Profile (seller only), like customer detail on
+             the customer list. -->
+        <action
+            android:id="@+id/action_profile_to_pairing"
+            app:destination="@id/pairingFragment" />
+    </fragment>
+
+    <!-- Seller side (reachable once the user is a seller): customer list + detail. -->
+    <fragment
+        android:id="@+id/customersFragment"
+        android:name="com.example.app_mobile.ui.customers.CustomersFragment"
+        android:label="@string/customers_title"
+        tools:layout="@layout/fragment_customers">
+
+        <action
+            android:id="@+id/action_customers_to_customerDetail"
+            app:destination="@id/customerDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/customerDetailFragment"
+        android:name="com.example.app_mobile.ui.customerdetail.CustomerDetailFragment"
+        android:label="@string/customer_detail_title"
+        tools:layout="@layout/fragment_customer_detail">
+
+        <argument android:name="customerId" app:argType="string" />
+        <argument android:name="customerName" app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/reportsFragment"
+        android:name="com.example.app_mobile.ui.reports.ReportsFragment"
+        android:label="@string/nav_reports"
+        tools:layout="@layout/fragment_reports" />
+
+    <fragment
+        android:id="@+id/pairingFragment"
+        android:name="com.example.app_mobile.ui.profile.PairingFragment"
+        android:label="@string/pairing_title"
+        tools:layout="@layout/fragment_pairing" />
+
+</navigation>

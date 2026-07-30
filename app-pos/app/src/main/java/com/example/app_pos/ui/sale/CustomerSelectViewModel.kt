@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.app_pos.data.FakeRepository
 import com.example.app_pos.model.Customer
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -22,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
  * the fragment, so it can be unit tested and the fragment only renders what it
  * is given.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class CustomerSelectViewModel : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -29,9 +33,15 @@ class CustomerSelectViewModel : ViewModel() {
     /** The raw query, so the screen can tell "not searched yet" from "no hits". */
     val query: StateFlow<String> = _query
 
+    // The signed-in seller's own customers (see CustomersViewModel for the pattern).
+    private val sellerCustomers =
+        FakeRepository.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(emptyList()) else FakeRepository.observeCustomers(user.userId)
+        }
+
     /** Customers matching the current query; empty until the merchant types. */
     val matches: StateFlow<List<Customer>> =
-        combine(FakeRepository.observeCustomers(), _query) { all, q ->
+        combine(sellerCustomers, _query) { all, q ->
             // A blank query means "no search yet", not "match everything" — showing
             // the full list here is exactly the mix-up this screen was built to fix.
             if (q.isEmpty()) {

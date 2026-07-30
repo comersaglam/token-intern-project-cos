@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Top-level screen map: two sibling entry points.
+  Top-level screen map.
 
+  loginFragment     — the login gate. This is the START destination: a standalone
+                      launch (launcher icon) lands here, and only a signed-in
+                      merchant is sent on to the dashboard.
   dashboardFragment — the merchant's management view (bottom nav, see
-                      dashboard_graph.xml). This is the START destination: when
-                      app-pos is opened on its own (launcher icon) the cashier
-                      lands here, no payment required.
+                      dashboard_graph.xml). Reached after login.
   saleFlow          — the veresiye (credit) step of a sale. Entered from the
                       payment app (mock-pos) via the CREDIT Intent; MainActivity
-                      navigates here after loading the amount.
+                      navigates here after loading the amount, bypassing the gate
+                      (the terminal is the merchant's; a live checkout is not blocked).
 
   A nested graph is also a ViewModel scope: SaleViewModel obtained with
   navGraphViewModels(saleFlow) is shared by the sale screens and destroyed when
@@ -20,7 +22,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_graph"
-    app:startDestination="@id/dashboardFragment">
+    app:startDestination="@id/loginFragment">
 
     <!--
       One flow, two transaction types (see SaleViewModel.txType):
@@ -117,6 +119,20 @@
             tools:layout="@layout/fragment_otp" />
     </navigation>
 
+    <!--
+      Login gate. This is the app's start destination (see the navigation's
+      startDestination above): a standalone launch lands here, and only a signed-in
+      merchant is sent on to the dashboard. Being the start destination, it shows no
+      up-arrow. A CREDIT handoff bypasses the gate — MainActivity navigates straight
+      to saleFlow on top of this — because the POS terminal is physically the
+      merchant's and a live checkout must not be blocked.
+    -->
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="com.example.app_pos.ui.login.LoginFragment"
+        android:label="@string/login_title"
+        tools:layout="@layout/fragment_login" />
+
     <!-- Reached from the action bar; hosts its own bottom-nav graph -->
     <fragment
         android:id="@+id/dashboardFragment"
@@ -138,5 +154,39 @@
     <action
         android:id="@+id/action_global_pay"
         app:destination="@id/saleFlow" />
+
+    <!--
+      After login: go to the dashboard AND pop the login gate off the stack
+      (popUpToInclusive), so Back from the dashboard exits the app instead of
+      returning to login. Kept separate from action_global_dashboard, which is used
+      mid-sale to jump to the dashboard WITHOUT tearing the stack down.
+    -->
+    <action
+        android:id="@+id/action_global_dashboard_after_login"
+        app:destination="@id/dashboardFragment"
+        app:popUpTo="@id/loginFragment"
+        app:popUpToInclusive="true" />
+
+    <!--
+      Logout: return to the gate and clear everything above it (pop the whole graph
+      inclusive), so the dashboard and its inner state are gone and Back from login
+      exits the app.
+    -->
+    <action
+        android:id="@+id/action_global_login"
+        app:destination="@id/loginFragment"
+        app:popUpTo="@id/nav_graph"
+        app:popUpToInclusive="true" />
+
+    <!--
+      After a login that was triggered by a CREDIT handoff: resume the sale flow with
+      the pending amount AND pop the login gate (so Back does not return to login).
+      isCreditHandoff is still set, so the flow finishes back to the payment app.
+    -->
+    <action
+        android:id="@+id/action_global_saleflow_after_login"
+        app:destination="@id/saleFlow"
+        app:popUpTo="@id/loginFragment"
+        app:popUpToInclusive="true" />
 
 </navigation>

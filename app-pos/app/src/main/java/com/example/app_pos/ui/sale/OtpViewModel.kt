@@ -65,11 +65,18 @@ class OtpViewModel : ViewModel() {
                 _status.value = OtpStatus.ERROR
                 return@launch
             }
+            // The login gate guarantees a signed-in seller here; the null-check is
+            // defensive. The entry is booked to this seller's ledger.
+            val sellerId = FakeRepository.currentSellerId() ?: run {
+                _status.value = OtpStatus.ERROR
+                return@launch
+            }
             val customerId =
                 if (isNew) FakeRepository.addCustomer(displayName, phone) else knownCustomerId
             FakeRepository.addTransaction(
                 Transaction(
                     transactionId = UUID.randomUUID().toString(),
+                    sellerId = sellerId,
                     customerId = customerId,
                     amountMinor = amountMinor,
                     type = type,

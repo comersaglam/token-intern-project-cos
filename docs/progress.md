@@ -538,3 +538,349 @@ davranış). Build sırasında cihaz bağlı değildi.
 
 **Sıradaki:** app-mobile UI (mock üstünde) — telefon+OTP giriş (oto-kayıt) → ödeme
 geçmişi + profil → "Satıcı ol". POS asset'lerinden türer, `:core-domain`'i kopyalar.
+
+### 2026-07-29 — Tur 14: app-pos login-gate + profil (User canlı) + mock eşleştirme
+
+User modelinin İLK gerçek tüketicisi. app-pos'a esnaf oturumu (login-gate) + profil
+ekranı (User bilgilerini gösterir) + POS↔hesap eşleştirmesi eklendi.
+
+**En kritik karar — login GERÇEK açılış-gate (mock içi), profil-içi buton DEĞİL:**
+Kullanıcı "gerçek login gelince mimari değişmesin, sadece içi dolsun" istedi. Bu yüzden
+gate deseni: `nav_graph startDestination = loginFragment`. Gerçek login gelince SADECE
+`FakeRepository.login()` + `LoginViewModel.login()` + login UI içi dolar; gate/nav/
+handoff mimarisi SABİT kalır.
+
+**CREDIT handoff'u bozmama (en hassas nokta):** `MainActivity.handleIntent` DAVRANIŞÇA
+DEĞİŞMEDİ (byte-uyumlu). CREDIT dalı `isLoggedIn`'e BAKMAZ → handoff gate'i ATLAR (POS
+terminali fiziksel esnafın; kasada müşteri bloklanmaz; `login()` çağırmaz → session'a
+dokunmaz). Tüm yeni davranış startDestination flip'inden gelir. Pending-intent YOK →
+`savedInstanceState` guard'ı değişmez. Docs auth kararına (Square/SumUp: bir kez giriş,
+sonra sessiz) uyar — gate nadir görünür, handoff'u pratikte kesmez.
+
+**Yapılanlar:**
+- `FakeRepository`: `isLoggedIn`/`isPairedWithApp` StateFlow (mock, false başlar —
+  akışları görmek için) + `login(phone?)`/`logout()`/`pairWithApp()` (backend-ready
+  imzalar). `observeCurrentUser` login'e bağlandı (`combine(_users, _isLoggedIn)` →
+  logout'ta null). `asStateFlow` import.
+- Login (yeni `ui/login/`): `fragment_login.xml` (başlık + opsiyonel telefon + buton),
+  `LoginViewModel` (LoginState IDLE/SUBMITTING/SUCCESS/ERROR — OtpViewModel deseni;
+  gerçek OTP için yer), `LoginFragment` (SUCCESS → `action_global_dashboard_after_login`).
+- `nav_graph.xml`: `loginFragment` destination + `action_global_dashboard_after_login`
+  (popUpTo login inclusive — giriş sonrası gate'i sil) + `action_global_login` (popUpTo
+  nav_graph inclusive — logout: dashboard'ı sil). **startDestination dashboard→login FLIP.**
+- `MainActivity`: `navigateToLogin()` helper (logout için DIŞ controller — login dış
+  grafta; `(activity as? MainActivity)` deseni). handleIntent değişmedi.
+- Profil (`ui/dashboard/profile/`): `ProfileUiState` sealed (NotPaired/Ready — NotLoggedIn
+  YOK, gate hallediyor), `ProfileViewModel` (`combine(observeCurrentUser, isPaired)`),
+  `ProfileFragment` (placeholder→ViewBinding; salt-okunur kart: displayName/phone/email
+  null→GONE/roller joinToString/shopName null→GONE + eşleştir kartı + logout),
+  `fragment_profile.xml` (MaterialCardView + NestedScrollView).
+- Eşleştirme: `PairingViewModel` (PairingStatus; confirmPairing delay(300)→pairWithApp→
+  DONE) + `fragment_pairing.xml` (OtpFragment deseni) + `PairingFragment`
+  (**installCancelGuard KULLANMADI** — saleFlow scope'una bağlı, crash ederdi;
+  DONE→Toast+navigateUp). `dashboard_graph.xml`: pairingFragment + action_profile_to_pairing.
+- `strings.xml`: login/profil/eşleştirme string'leri; `profile_placeholder` kaldırıldı.
+
+**Öğrenilenler:**
+- **Gate'i startDestination'a koy, MainActivity redirect ETME.** `AppBarConfiguration
+  (navController.graph)` start'a up-arrow koymaz → login bedavaya up-arrow'suz. Redirect
+  deseni (dashboard start + onCreate'te kaç) ilk-frame flash + manuel AppBarConfiguration ister.
+- **Kırılgan koda dokunmamanın değeri:** handleIntent'i byte-uyumlu bırakıp tüm davranışı
+  deklaratif nav'dan (startDestination + popUpTo action'lar) almak = en güvenli refactor.
+  handoff testi bozulursa suçlu tek satır (flip), yeni ekranlar değil.
+- **Adım sırası riski izole eder:** additive (1-5, app hâlâ dashboard açar) → flip (6) →
+  handoff (7) → profil (8). Her adım derlenip test edilir; en riskli tek satır tek başına.
+- **Cross-graph nav = DIŞ controller.** Profil iç grafta, login dış grafta →
+  `findNavController()` (iç) login'i bulamaz/crash; activity üzerinden dış controller.
+- **String kaldırma sırası:** `profile_placeholder`'ı önce sildim, eski layout hâlâ
+  referans veriyordu → resource-link hatası. Ders: string'i onu KULLANAN son dosyayla
+  birlikte kaldır (geçici geri-ekleme + build-yeşil-tut ile çözdüm).
+
+**Doğrulama:** `:app:assembleDebug` ✓ uyarısız (8 adım, her biri ayrı derlendi).
+**Cihaz testi BEKLİYOR** (telefon bağlı değildi). Regresyon+yeni test listesi plan
+dosyasında (Grup A: launcher/handoff/iç-nav bozulmamalı; Grup B: login gate, logout,
+eşleştirme). `posbuild` ile doğrulanacak.
+
+**Sıradaki:** app-mobile UI — bu login + profil ekranları desen olacak (User kopyalanarak).
+
+### 2026-07-29 — Tur 15: Login gerçek credential + mock token/session + handoff gate + profil düzenleme
+
+Tur 14'ün mock login'i gerçeğe yaklaştırıldı; kullanıcı isteğiyle 4 iş.
+
+**Session/token (User'a DEĞİL, ayrı Session):** `FakeRepository` içinde `private data
+class Session(token, loggedInAt, expiresAt)` + `_session: MutableStateFlow<Session?>`.
+`isSessionValid()` = token var + `expiresAt > now`. Gerekçe: User = kimlik (domain);
+token = oturum-state. Backend JWT DataStore/Room'da tutulacak, User'da değil. **MOCK
+sınırı:** token RAM'de → app tamamen kapanınca sıfırlanır (kalıcılık FAZ 3/Room); "7
+gün" mantığı kodda gerçek ama restart'ta hatırlamaz.
+
+**Login credential:** `login(phone): Boolean` — sadece kayıtlı numara kabul (Tur 15'te
+sabit "05554443322"; Tur 16'da findUserByPhone'a genişledi). LoginViewModel SUCCESS/ERROR.
+
+**Dinamik startDestination (flash'sız):** `MainActivity.onCreate`'te grafiği inflate
+edip `setStartDestination(isSessionValid ? dashboard : login)`. Token geçerliyse login
+hiç çizilmez. `savedInstanceState==null` guard korunur.
+
+**Handoff + login + pending amount:** CREDIT geldiğinde login değilse `pendingHandoffAmount`
+(MainActivity field + Bundle save/restore) saklanır, login sonrası `onLoginSucceeded()`
+saleFlow'a (pending ile) götürür (`action_global_saleflow_after_login`, popUpTo login
+inclusive). `isCreditHandoff` flag'i korunur → OTP sonrası mock-pos'a döner. handleIntent
+CREDIT dalı `isSessionValid` kontrolü eklendi (login'liyse eskisi gibi direkt saleFlow).
+
+**Profil düzenlenebilir + u_owner boş başlar:** seed u_owner `displayName=""`,
+`sellerInfo=null`, `isSeller=true`. Profil inline edit: isim + dükkan yanında "Güncelle"
+butonu → MaterialAlertDialog + input → `updateDisplayName`/`updateShopName` (setSeller'ın
+shopPhone-ezmesini önler). Boşken "eklenmemiş" placeholder.
+
+### 2026-07-29 — Tur 16: Satıcı sahipliği (Transaction.sellerId) + login/register ayrımı
+
+Cihaz testinde iki eksik görüldü: (1) müşteriler/transaction'lar hiçbir satıcıya bağlı
+değildi (herkese aynı liste), (2) login/register ayrımı yoktu. Kullanıcının mimari
+düzeltmesi: sahiplik **Customer'da DEĞİL Transaction'da** ("bir müşteri farklı
+satıcılardan alışveriş yapabilir").
+
+**A — Sahiplik:**
+- `Transaction`e `sellerId: String` eklendi (customerId = buyer). Bakiye artık
+  **(seller, customer) çifti** toplamı. Seed t1-t10 hepsi `sellerId="u_owner"` (bakiyeler
+  aynı kaldı — regresyon güvencesi).
+- `observeCustomers(sellerId)` = o satıcının ledger'ında transaction'ı olan müşteriler
+  (SQL: `DISTINCT customer_id WHERE seller_id=?`). `observeTransactions(sellerId,
+  customerId)`, `observeTotalReceivableMinor(sellerId)`, `balanceOf(sellerId, customerId,
+  ledger)` hepsi seller-scoped. `RawCustomer.toCustomer(sellerId, ledger)` helper (3
+  yerdeki tekrarı tek noktaya aldı).
+- `currentSellerId(): String?` senkron helper (OtpViewModel yazarken; Flow'dan .value
+  alınamaz). OtpViewModel.verifyAndWrite artık `sellerId` yazıyor.
+- 3 reader VM (Customers/CustomerSelect/CustomerDetail) + ConfirmViewModel:
+  `observeCurrentUser().flatMapLatest { observe*(user.userId) }` deseni (@OptIn
+  ExperimentalCoroutinesApi). findCustomerById/ByPhone'a sellerId parametresi.
+
+**B — Login/Register:**
+- `login`: kayıtlı numara (`findUserByPhone`) → login; yeni → `NEEDS_REGISTER`.
+  LoginViewModel: NEEDS_REGISTER + `register()` (registerUser(phone, "", isSeller=true) +
+  login) + `cancelRegister()`. LoginFragment: MaterialAlertDialog onayı. app-pos'tan
+  register = **satıcı** (isSeller=true default param; app-mobile'ı bozmaz).
+
+**Cihaz testinde çıkan 3 BUG (çözüldü):**
+1. **Login sonrası boş dashboard/profil, telefon yok** — kök neden: `PhoneFormat.toStored`
+   idempotent değil; `login` E.164 numarayı TEKRAR toStored'dan geçirince null → session
+   set edilmiyordu (ama LoginVM SUCCESS diyordu). Debug log ile teşhis edildi. Fix:
+   `login` toStored yapmıyor (findUserByPhone digit-normalize zaten her formatı kabul
+   eder); `toStored` **idempotent** yapıldı (zaten +90 ile başlayanı olduğu gibi döndürür);
+   LoginVM `login()` dönüşünü kontrol ediyor (false→ERROR).
+2. **Register dialog açılmıyordu** — aynı çift-toStored: `pendingPhoneDisplay` E.164'ü
+   tekrar toStored → null → dialog return. Fix: pendingPhone zaten E.164, direkt döndür.
+3. **Register/login farklı user'da hep u_owner gösteriyordu** — `observeCurrentUser`
+   HARDCODED "u_owner" döndürüyordu (session kimin diye bakmıyordu). Fix: `Session`'a
+   `userId` eklendi; login o user'ın id'sini saklar; observeCurrentUser + currentSellerId
+   session.userId'ye bağlı. Artık kim login'se onun profili/ledger'ı görünür.
+
+**Öğrenilenler:**
+- **Idempotent olmayan dönüşüm = sinsi bug.** `toStored(toStored(x))` null veriyordu;
+  fonksiyonu idempotent yapmak sınıfın tüm bug'larını kökten çözdü. Format dönüştüren
+  util'ler idempotent olmalı.
+- **Session "kim" bilgisini taşımalı.** Tek-user mock kısayolu (hep u_owner) çok-user
+  (register) gelince kırıldı; session.userId gerçek çözüm — backend JWT subject'ine köprü.
+- **Debug teşhisi:** sessiz mantık hatası (crash değil) → geçici `Log.d` + logcat; kök
+  neden anında görünür. MIUI logcat gürültüsü (avc denied, OnBackInvokedCallback,
+  AutofillManager) uygulama hatası DEĞİL, filtrelenmeli.
+
+**Doğrulama:** `:app:assembleDebug` ✓. Cihazda: login (05554443322) ✓, farklı numara →
+register onayı → yeni satıcı olarak giriş ✓, doğru profil/dashboard ✓. Tek uyarı:
+OtpViewModel'deki eski `Locale("tr","TR")` (bu turla ilgisiz).
+
+**Sıradaki:** app-mobile UI (mock üstünde) — login + profil + register ekranları desen
+olacak, User modeli kopyalanarak. Sonra shared-contracts/openapi.yaml (seller_id +
+customer_id ledger + POST /users{is_seller} + POST /auth/login{phone}).
+
+### 2026-07-29 — Tur 17: FAZ 6 — app-mobile MÜŞTERİ (buyer) dikeyi, mock üstünde  [FAZ 6 başladı]
+
+Yeni client'ın ilk turu. app-mobile'ın **alıcı (buyer)** tarafı baştan sona kuruldu;
+app-pos ekranları desen alındı, `:core-domain` KOPYALANDI (ayrı Gradle projesi, mock-pos
+deseni). Hepsi mock (`FakeRepository` RAM). Cihazda derleniyor (`:app:assembleDebug` ✓).
+
+**Bu turun kararları (kullanıcı onayı):**
+- **Polling: sadece foreground (mock).** Onay ekranı açıkken repo StateFlow'u reaktif →
+  "bekleyen onay" canlı görünür. Background/WorkManager = imza+TODO(FAZ 4). app-mobile
+  **caller**, dinleyici değil; **FCM YOK** (Google servis güvenilmezliği).
+- **App'li müşteri onay UX'i: in-app Onayla/Reddet kartı** (OTP kodu DEĞİL). Docs'taki
+  "app'li müşteride onay app-push, app'siz'de SMS OTP" ayrımına uyar → düşük friction.
+- **Kapsam: buyer.** Seller ("Satıcı ol" + müşteri recyclerview/detay) AYRI tura ertelendi
+  (profildeki buton görünür ama şimdilik Toast placeholder).
+
+**Mimari yön — buyer = seller'ın SİMETRİĞİ:** app-pos seller-scoped
+(`observeCustomers(sellerId)` = "müşterilerim"); app-mobile buyer bunun tersini ister:
+müşteri borcunu **tüm satıcılar boyunca** görür. Aynı append-only ledger, farklı okuma yönü
+(`WHERE customer_id=?`, satıcıya göre grupla). Yeni buyer-scoped repo metodları:
+`observeMyDebtsBySeller` (→ `SellerDebt(sellerId, shopName, balanceMinor)` projeksiyonu),
+`observeMyTransactions(userId, sellerId)`, `observeMyBalanceWithSeller`, `observeMyTotalDebtMinor`.
+`claimCustomerForUser` bu turda GERÇEKTEN kodlandı (app-pos'ta `TODO`'ydu): login'de o
+numaralı UNCLAIMED Customer'lar CLAIMED + `claimedByUserId` bağlanır (eski borç devralınır).
+
+**Bekleyen onay — mock sınırı dürüst:** app-mobile ayrı APK, app-pos'un FakeRepository'sini
+GÖREMEZ + backend yok → "POS istek attı" durumu app-mobile'ın KENDİ repo'sunda simüle
+edildi: `PendingApproval(id, sellerId, shopName, buyerUserId, amountMinor, type, ...)` +
+`observePendingApprovals` + `approvePending`/`rejectPending`. Seed'de 1 bekleyen onay
+(demo'da kart görünsün). Onaylanınca → `addTransaction` (tek yazma noktası, app-pos'un
+"OTP sonrası tek yerde yaz" deseninin buyer karşılığı) + pending kaldırılır. Reddedilince
+→ pending kaldırılır, yazma yok.
+
+**Ödeme başlatma (buyer initiator):** müşteri detayında **[Ödeme Yap]** → tutar dialog'u →
+`initiatePayment` → PAYMENT yazılır (bakiye canlı düşer). Docs "hem POS hem müşteri
+başlatabilir"e uyar; backend gelince "POS'a onay gider" olacak (TODO FAZ 4/5). app-pos'un
+keypad+saleFlow'u yerine basit dialog — buyer ödemesi için yeterli, overengineering yok.
+
+**Yapılanlar (dosya seviyesinde):**
+- **Gradle:** `libs.versions.toml`'a navigation+safeargs+recyclerview+fragment/activity/
+  viewmodel-ktx eklendi; `app/build.gradle.kts` viewBinding zaten açıktı, safeargs plugin +
+  `implementation(project(":core-domain"))` eklendi; `settings.gradle.kts` include(":core-domain").
+  app-mobile zaten XML durumundaydı (Compose değil) — dönüşüm gerekmedi.
+- **`:core-domain` KOPYASI:** app-pos/core-domain → app-mobile/core-domain (build.gradle.kts
+  dahil). **Paket `com.example.app_pos.model` KORUNDU** → app kodu `com.example.app_mobile.*`
+  ama modelleri `app_pos.model`'den import eder (mock-pos deseni; import satırı değişmez).
+  `:core-domain:build` izole ✓ (saf JVM).
+- **data:** `FakeRepository` (buyer-scoped, iki satıcılı seed: u_owner "Ahmet Bakkal" +
+  u_market "Ayşe Market", u1 signed-in buyer iki dükkana borçlu), `OtpService` (sign-in OTP
+  mock), `util/{PhoneFormat,MoneyFormat}` kopya. `SellerDebt`/`PendingApproval` = buyer-tarafı
+  read projeksiyonları (repo yanında, domain değil).
+- **UI (hepsi app-pos idiomu):** `MainActivity` session-gate startDestination (CREDIT
+  handoff makinesi ÇIKARILDI — POS'a özel) + inner-nav up routing; `ui/login` (register =
+  ALICI, isSeller=false; login → claim); `ui/dashboard/DashboardFragment` iç NavHost +
+  bottom-nav (Borçlarım/Onaylar/Profil); `ui/debts` (SellerDebt liste); `ui/sellerdetail`
+  (geçmiş+filtre+Factory VM+ödeme dialog); `ui/approvals` (Onayla/Reddet kart); `ui/profile`
+  (isim/telefon/email/roller + "Satıcı ol" placeholder + logout). nav_graph + dashboard_graph
+  + bottom_nav_menu + 3 vektör ikon + tema (Material3 DayNight, teal — POS'un fixed-dark'ından
+  farklı, tüketici app'i).
+
+**Öğrenilenler:**
+- **Buyer okuması = seller okumasının simetriği.** Aynı ledger'ı iki client iki yönden
+  okuyor; contract yazılınca (sonraki adım) bu iki gerçek ihtiyaç (seller-scoped +
+  buyer-scoped endpoint) görülmüş olacak — sıralamanın (app-mobile önce) amacı buydu.
+- **Ayrı APK sınırını dürüst modelle.** "POS'tan gelen onay" gerçekte backend'den gelir;
+  backend yokken bunu app-mobile'ın kendi mock'unda `PendingApproval` seed'iyle taklit etmek,
+  gerçek mimariyi (poll → onayla → tek yazma) bozmadan gösterilebilir demo verir.
+- **Paketi koruyarak kopyalamak = sıfır import düzenlemesi.** `:core-domain` `app_pos.model`
+  paketinde kaldı; app kodu farklı pakette ama modelleri sorunsuz import etti.
+
+**Doğrulama:** `:core-domain:build` ✓, `:app:assembleDebug` ✓ (tek uyarı: MoneyFormat'taki
+kopyalanmış `Locale("tr","TR")` deprecation — app-pos'la aynı, bu turla ilgisiz). **Cihaz
+testi:** APK kuruldu ama MIUI "USB'den yükle" kısıtı `INSTALL_FAILED_USER_RESTRICTED` verdi
+(Tur 2 dersi — build sorunu değil, cihaz ayarı). Kullanıcı cihazda izin verince uçtan uca:
+register → borçlarım (2 satıcı) → satıcı detayı → Ödeme Yap → Onaylar (seed) → onayla →
+profil (roller, email düzenle) → logout.
+
+**Sıradaki:** (opsiyonel) seller dikeyi app-mobile'da; sonra **shared-contracts/openapi.yaml**
+— iki client'ın gerçek ihtiyacı görüldü (seller-scoped + buyer-scoped ledger okuma, pending
+approval endpoint, user/auth). Sonra FAZ 3 (Room).
+
+### 2026-07-29 — Tur 18: app-mobile Token mavi palet + görsel iyileştirme + demo seed düzeltmesi
+
+Cihaz testi geri bildirimi üzerine üç iş (kullanıcı: "çok iyi olmuş").
+
+**1) Token mavi, sabit-koyu palet:** app-mobile'a Tur 17'de teal palet konmuştu; Token
+şirketinin mavi tonlarına (`primary #4C8BFF`, app-pos'ta zaten var) taşındı. Karar:
+app-mobile app-pos'un **sabit-koyu** fintech paletini kullansın (iki app görsel olarak
+birebir tutarlı). `colors.xml` app-pos'unkiyle değiştirildi (aynı isimler → layout
+referansları kırılmadı), `themes.xml` `Theme.Material3.DayNight` → `Theme.Material3.Dark`
++ app-pos'un color-token eşlemesi + `ThemeOverlay.Appmobile.ActionBar` +
+`Widget.Appmobile.BottomNav` (+ActiveIndicator), `res/color/bottom_nav_item.xml` kopyalandı.
+Layout'lar tema attribute'ları (`?attr/colorOnSurface` vb.) kullandığı için otomatik uydu.
+
+**2) app-pos profil kartı görseli (fonksiyon değişmedi):** app-mobile'ın beğenilen kart
+düzeni (label üstte + değer altta + hairline `ProfileDivider`) app-pos `fragment_profile.xml`e
+taşındı. **Tüm view id'leri korundu** → ProfileFragment/ViewModel HİÇ değişmedi (id değişse
+ViewBinding derleme hatası verirdi — güvenlik ağı). `ProfileDivider` stili app-pos
+`styles.xml`e + `profile_name_label` string'i eklendi. **Login layout'ları zaten birebir
+aynıydı** (diff sadece yorum/tools:text) → app-pos login'de değişiklik gerekmedi; kullanıcının
+gördüğü fark palet+tema kaynaklıydı.
+
+**3) Demo seed düzeltmesi (kök neden seed, kod değil):** bekleyen onay yalnız `u1`'e bağlıydı;
+herkesin bildiği `05554443322` = `u_owner` (satıcı+alıcı) ile girişte onay/borç görünmüyordu.
+`observePendingApprovals` filtresi DOĞRU çalışıyordu — seed yanlış hesaba bağlıydı. Fix:
+`u_owner`'a Ayşe Market'te bir alıcı customer kaydı (`o1`) + ledger (borç 60 TL) + kendi
+bekleyen onayı (`p2`, Ayşe Market 75 TL) eklendi. `u1` korundu. Artık **iki numarayla da**
+girişte borç + onay görünür. `observeMyDebtsBySeller`/`observeMyTransactions` zaten
+`claimedByUserId == userId` ile çalıştığından kod değişmedi.
+
+**Kısayol:** `~/.zshrc`'ye `mobilebuild` eklendi (posbuild/mockbuild deseni: app-mobile
+derle + `adb install -r`).
+
+**Öğrenilenler:**
+- **Boş liste bug'ı = önce seed'i şüphelen.** Filtre kodu doğruyken "hiç görünmüyor" çoğu
+  kez veri-senaryo uyuşmazlığıdır; herkesin test ettiği hesabın (05554443322) seed'de
+  ilgili verisi yoksa "çalışmıyor" görünür.
+- **Görsel refactor'da id koru = fonksiyon dokunulmaz.** Layout'u tümden değiştirip tüm
+  id'leri sabit tutmak, Fragment/VM'e hiç dokunmadan yeni görünüm verir; kırılırsa derleme
+  hatası (sessiz değil).
+
+**Doğrulama:** `mobilebuild`/`posbuild` ile cihazda (kullanıcı çalıştırdı) — mavi palet ✓,
+app-pos profil yeni görünüm ✓, 05554443322 girişte borç+onay ✓. Regresyon yok (buyer akışları
++ app-pos veresiye/ödeme değişmedi).
+
+**Sıradaki:** Tur 19 — app-mobile SATICI dikeyi ("Satıcı ol" + müşteri listesi/detay +
+onaya-gönder ApprovalService + pairing + dinamik sekme).
+
+### 2026-07-29 — Tur 19: app-mobile SATICI (seller) dikeyi + ApprovalService (onaya-gönder)
+
+app-mobile artık tek app, iki rol: buyer (varsayılan) + "Satıcı ol" ile seller. FAZ 6'nın
+seller yarısı. Tümü mock, buyer tarafı bozulmadan ADDITIVE.
+
+**Kullanıcı kararları:** satıcı defteri = kendi userId'si (sellerId = userId); ekranlar =
+Müşterilerim (recyclerview + toplam alacak + arama/filtre) + müşteri detayı; veresiye/ödeme
+yazma = **popup** (keypad/saleFlow YOK, buyer'daki gibi aynı asset); sekme **DİNAMİK**
+(satıcı olunca "Müşterilerim" eklenir); pairing DAHİL (numara-eksenli mock); server onay
+mock'u EKLENDİ.
+
+**En önemli parça — ApprovalService (onaya-gönder, tek yazma korunur):** önceden
+`initiatePayment`/`approvePending` DOĞRUDAN ledger'a yazıyordu (sadece TODO yorumu vardı).
+Artık gerçek bir mock onay yolu var: yeni `data/ApprovalService.kt` (OtpService deseni,
+suspend `requestApproval`). Repo'da `requestApproval(fromUserId, sellerId, customerId,
+amount, type, description)`: hedef müşteri **CLAIMED** ise (app'li) o kullanıcının
+`buyerUserId`'sine `PendingApproval` DÜŞER (Onaylar sekmesi); **UNCLAIMED** ise (app'siz)
+OtpService mock true → **anında yazılır** (docs'un app-push/SMS ayrımı). Böylece satıcı
+veresiye yazınca müşteri onayından geçer (docs: her DEBT/PAYMENT onaydan geçer). **Buyer
+`initiatePayment` de bu yola taşındı** → iki yön simetrik, tek yazma noktası (approvePending
+sonrası veya app'siz anında). `initiatePayment`/`pay` artık suspend → viewModelScope.launch.
+
+**Repo seller yüzeyi (app-pos'tan port):** `observeCustomers(sellerId)`,
+`observeTransactions(sellerId, customerId)`, `observeTotalReceivableMinor(sellerId)`,
+`addCustomer`, `findCustomerById/ByPhone`, `customerPhoneExists`, `setSeller`,
+`updateShopName`, `pairWithApp()` + `isPairedWithApp: StateFlow`. **`RawCustomer.toCustomer`
+gerçek bakiye türetir oldu** (`balanceOf`; eskiden hardcoded 0 — buyer claim'i için nullable
+sellerId dalı korundu). Seed: `u_owner` defterine (sellerId="u_owner") c3 (app'li) + c4/c5
+(UNCLAIMED, app'siz onay dalı için) müşteri + t9-t13 ledger. `logout` pairing'i sıfırlar.
+
+**Seller ekranları (app-pos idiomu, paket app_mobile):** `ui/customers/` (Fragment+VM+
+Adapter; VM `observeCurrentUser().flatMapLatest { observeCustomers(user.userId) }`),
+`ui/customerdetail/` (Fragment+VM; Factory ile customerId; **[Veresiye Yaz]/[Ödeme Al] =
+popup** → `requestApproval`; feedback claim'e göre "Onaya gönderildi"/"Deftere yazıldı").
+Buyer'ın `sellerdetail/TransactionAdapter`'ı yeniden kullanıldı. Layout'lar app-pos'tan
+kopya (`fragment_customers`, `item_customer`, `fragment_customer_detail`; `item_transaction`
+zaten vardı).
+
+**Profil + pairing + dinamik sekme:** `ProfileViewModel` `combine(observeCurrentUser,
+isPairedWithApp)` → `ProfileUiState(user, isPaired)`. "Satıcı ol" Toast yerine dükkan-ismi
+dialog → `setSeller` → `isSeller=true`; satıcı olunca profilde dükkan satırı + pairing kartı
+(NotPaired → eşleştir → Ready) belirir, "Satıcı ol" butonu gizlenir. `PairingFragment/VM`
+(app-pos deseni, tek-onay mock). `DashboardFragment` `observeCurrentUser` collect edip
+`isSeller` olunca bottom-nav menüsünü `bottom_nav_menu_seller.xml`e (4 sekme: Borçlarım/
+Müşterilerim/Onaylar/Profil) çevirir + setupWithNavController'ı tekrar bağlar (isSellerMenu
+guard ile tek seferlik). `dashboard_graph`e customersFragment/customerDetailFragment/
+pairingFragment + action'lar eklendi.
+
+**Öğrenilenler:**
+- **Tek app iki rol = tek repo iki okuma yönü.** Buyer (`observeMyDebtsBySeller`) ve seller
+  (`observeCustomers`) aynı ledger'ı iki yönden okur; her ikisi de ADDITIVE, çakışmaz.
+- **Onay yolu mimariyi taşır.** "Doğrudan yaz"ı `requestApproval`a çevirmek, backend gelince
+  sadece ApprovalService gövdesinin değişeceği doğru şekli verir; CLAIMED/UNCLAIMED dalı
+  app-push/SMS ayrımının mock'u. Tek yazma noktası korunur.
+- **Dinamik bottom-nav = menüyü değiştir + setupWithNavController'ı tekrar çağır.** Guard
+  olmadan her re-emit seçili sekmeyi sıfırlar.
+
+**Doğrulama:** kod yazıldı; **cihaz build'i kullanıcıda** (`mobilebuild`). Beklenen: 05554443322
+(satıcı) → Müşterilerim sekmesi → liste + toplam alacak → müşteri detayı → [Veresiye Yaz]
+popup → c3 (app'li) için onaya gider / c4-c5 (app'siz) anında yazılır → pairing kartı →
+eşleştir → Ready. Yeni numarayla register → buyer → "Satıcı ol" → dükkan ismi → sekme belirir.
+Buyer regresyon: Borçlarım/Onaylar/Profil aynı.
+
+**Sıradaki:** kullanıcı feedback'i sonrası düzeltmeler; sonra shared-contracts/openapi.yaml
+(iki client + iki rol ihtiyacı netleşti) → FAZ 3 (Room).

@@ -11,6 +11,7 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
+import com.example.app_pos.data.FakeRepository
 import com.example.app_pos.databinding.ActivityMainBinding
 import com.example.app_pos.ui.dashboard.DashboardFragment
 
@@ -32,6 +33,14 @@ class MainActivity : AppCompatActivity() {
     /** True when opened from the payment app; drives the finish-back behaviour. */
     private var isCreditHandoff = false
 
+    /**
+     * A CREDIT amount that arrived while the merchant was not signed in. Held until
+     * login succeeds, then the sale flow resumes with it (see onLoginSucceeded).
+     * Saved into the instance state so it survives rotation / process death on the
+     * login screen. null = nothing pending.
+     */
+    private var pendingHandoffAmount: Long? = null
+
     private val navController: NavController
         get() = (supportFragmentManager
             .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
@@ -40,6 +49,22 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Pick the start destination from the session BEFORE the graph is used, so a
+        // valid session opens straight on the dashboard with no login flash, and no
+        // session shows the gate. Only on a fresh start: on recreation the controller
+        // restores its own back stack, so re-setting the graph would wipe it.
+        if (savedInstanceState == null) {
+            val graph = navController.navInflater.inflate(R.navigation.nav_graph)
+            graph.setStartDestination(
+                if (FakeRepository.isSessionValid()) R.id.dashboardFragment else R.id.loginFragment
+            )
+            navController.graph = graph
+        } else {
+            pendingHandoffAmount =
+                if (savedInstanceState.containsKey(KEY_PENDING_AMOUNT))
+                    savedInstanceState.getLong(KEY_PENDING_AMOUNT) else null
+        }
 
         // Shows each destination's label in the action bar and adds the up
         // arrow on every screen except the start destination.
@@ -85,10 +110,18 @@ class MainActivity : AppCompatActivity() {
         isCreditHandoff = intent.action == ACTION_CREDIT
         if (isCreditHandoff) {
             val amountMinor = intent.getLongExtra(EXTRA_AMOUNT_MINOR, 0L)
-            navController.navigate(
-                R.id.saleFlow,
-                bundleOf("amountMinor" to amountMinor)
-            )
+            if (FakeRepository.isSessionValid()) {
+                // Signed in: straight to the sale flow, as before.
+                navController.navigate(R.id.saleFlow, bundleOf("amountMinor" to amountMinor))
+            } else {
+                // Not signed in: hold the amount and require login first. The gate is
+                // already the start destination on a cold start; if a CREDIT arrives
+                // while on the dashboard with an expired session, send them to login.
+                pendingHandoffAmount = amountMinor
+                if (navController.currentDestination?.id != R.id.loginFragment) {
+                    navController.navigate(R.id.action_global_login)
+                }
+            }
         }
     }
 
@@ -159,6 +192,42 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    /**
+     * Returns to the login gate, clearing the dashboard behind it (see
+     * action_global_login). Called from the profile's logout button. Uses the
+     * OUTER controller: login lives in the outer graph, so the dashboard's inner
+     * controller (which the profile screen would otherwise reach) cannot navigate
+     * there. Mirrors how OtpFragment reaches finishCreditHandoff via the activity.
+     */
+    fun navigateToLogin() {
+        navController.navigate(R.id.action_global_login)
+    }
+
+    /**
+     * Called by LoginFragment on a successful sign-in. If a CREDIT amount was waiting
+     * (handoff arrived while logged out), resume the sale flow with it and report
+     * true so the fragment does not also go to the dashboard. Otherwise report false
+     * and the fragment routes to the dashboard as usual.
+     *
+     * isCreditHandoff is still true here, so once the sale flow finishes OTP,
+     * finishCreditHandoff(true) returns to the payment app exactly as a direct
+     * handoff would.
+     */
+    fun onLoginSucceeded(): Boolean {
+        val amount = pendingHandoffAmount ?: return false
+        pendingHandoffAmount = null
+        navController.navigate(
+            R.id.action_global_saleflow_after_login,
+            bundleOf("amountMinor" to amount)
+        )
+        return true
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pendingHandoffAmount?.let { outState.putLong(KEY_PENDING_AMOUNT, it) }
+    }
+
     companion object {
         // The handoff contract with the payment app (mock-pos). The matching
         // action is declared in AndroidManifest and mock-pos sends the same
@@ -166,5 +235,8 @@ class MainActivity : AppCompatActivity() {
         // no code (separate APKs); could move to shared-contracts later.
         const val ACTION_CREDIT = "com.example.app_pos.action.CREDIT"
         const val EXTRA_AMOUNT_MINOR = "amount_minor"
+
+        // Instance-state key for a CREDIT amount pending login (survives rotation).
+        private const val KEY_PENDING_AMOUNT = "pending_handoff_amount"
     }
 }

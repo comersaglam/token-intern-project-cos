@@ -98,25 +98,35 @@ enum class TransactionType { DEBT, PAYMENT }
 
 data class Transaction(
     val transactionId: String,   // UUID — idempotency
-    val customerId: String,
+    val sellerId: String,        // HANGİ satıcının defteri (Tur 16)
+    val customerId: String,      // buyer (müşteri)
     val amountMinor: Long,       // kuruş; 50 TL = 5000
     val type: TransactionType,   // DEBT (+) / PAYMENT (-)
     val createdAt: String        // ISO-8601
 )
 ```
+> **SAHİPLİK Transaction'da, Customer'da DEĞİL (Tur 16 — mimari düzeltme):** bir müşteri
+> farklı satıcılardan alışveriş yapabilir; aynı telefon (kimlik) tek Customer'dır ama
+> farklı satıcılara farklı borcu olur. Bu yüzden `Transaction(sellerId, customerId)` ve
+> **bakiye = (seller, customer) çiftinin toplamı**. "Satıcının müşterisi" = o satıcı ile
+> en az bir transaction'ı olan customer (SQL: `SELECT DISTINCT customer_id FROM
+> transactions WHERE seller_id=?`). Ayrı customer→seller tablosu YOK. `Customer.claimedByUserId`
+> ayrı eksen (müşterinin app hesabı), sellerId ile karıştırma.
 ```kotlin
 // :core-network — GİDEN JSON şekli (snake_case). Retrofit/Moshi @Json ile eşlenir.
 data class TransactionDto(
     val transaction_id: String,
+    val seller_id: String,
     val customer_id: String,
     val amount_minor: Long,
     val type: String,            // "DEBT" / "PAYMENT"
     val created_at: String
 )
-// :core-network — GELEN cevap (müşteri bakiyesi)
+// :core-network — GELEN cevap (bir müşterinin bir satıcıya bakiyesi)
 data class BalanceDto(
+    val seller_id: String,
     val customer_id: String,
-    val balance_minor: Long,     // hareketlerin toplamı (backend hesaplar)
+    val balance_minor: Long,     // (seller, customer) çiftinin toplamı (backend hesaplar)
     val as_of: String
 )
 ```
@@ -189,6 +199,26 @@ data class SellerInfo(
 - Token her isteğe `:core-network`'teki `AuthInterceptor` ile eklenir.
 - Token'lar şifreli saklanır (EncryptedSharedPreferences / DataStore + Keystore).
 
+### Mevcut mock uygulama (Tur 15-16 — app-pos)
+Yukarısı backend hedefidir; şu an mock ama gerçek mimariyle:
+- **Session ayrı tutulur (User'a değil):** `FakeRepository`'de `Session(userId, token,
+  loggedInAt, expiresAt)`. `isSessionValid()` = token var + `expiresAt > now` (7 gün TTL,
+  kodda gerçek). User = kimlik (domain); Session = oturum-state. Backend'de token
+  DataStore/Room'da, User tablosunda DEĞİL. **MOCK sınırı:** RAM'de → app kapanınca
+  sıfırlanır (kalıcılık FAZ 3/Room).
+- **Session "kim" bilgisini taşır:** `Session.userId` → `observeCurrentUser()` ve
+  `currentSellerId()` hep bunu çözer (hardcoded değil). Kim login'se onun profili/ledger'ı.
+- **Login-gate = nav_graph startDestination** (redirect değil): `MainActivity.onCreate`
+  session geçerliyse `setStartDestination(dashboard)`, değilse `login` → flash yok.
+  CREDIT handoff gate'i atlar; login değilse `pendingHandoffAmount` saklanır, login sonra
+  saleFlow'a devam eder (`onLoginSucceeded`).
+- **Login = giriş / Register = kayıt (aynı ekran):** numara girilir → kayıtlıysa
+  (`findUserByPhone`) login; değilse "kayıt olacaksınız" onay dialogu → `registerUser(phone,
+  "", isSeller=true)` + login. **app-pos'tan register = SATICI** (app-mobile'dan = alıcı).
+  displayName boş başlar, profilden doldurulur.
+- **Login OTP'si henüz yok** (mock: numara eşleşmesi yeterli); gerçekte telefon+OTP olacak,
+  `LoginState` (SUBMITTING/SUCCESS/ERROR/NEEDS_REGISTER) buna hazır.
+
 ---
 
 ## 6. Akışlar (özet — detay flow-pos.svg)
@@ -257,10 +287,49 @@ data class SellerInfo(
 > detay ve toplam alacak **canlı** güncellenir. Room DAO Flow'ları aynı davranacağı
 > için ViewModel'ler Faz 3'te değişmeyecek.
 
-**Flow B — Müşteri (app-mobile):**
-1. QR/NFC okut → 2. app var mı? yoksa Play Store → ilk kurulum (telefon+OTP+isim)
-   → 3. "Toplam borcum" sayfası → 4. ÖDE (şimdilik kart) / 5. Ayarlar
-   (isim, kart, borç-ödeme listesi). Gelen QR "otomatik ekle" onayı ile bağlanır.
+**Flow B — Müşteri (app-mobile) — buyer dikeyi (Tur 17, mock üstünde kuruldu):**
+1. **Telefon + OTP** ile giriş (mock; kayıt=giriş, düşük friction) → giriş anında o
+   numaralı UNCLAIMED Customer kayıtları CLAIMED olur (`claimCustomerForUser`, eski borç
+   devralınır).
+2. **Borçlarım:** müşterinin borcu **tüm satıcılar boyunca**, satıcıya göre gruplanır
+   (`observeMyDebtsBySeller` → dükkan adı + o dükkana bakiye). Bu, app-pos'un seller-scoped
+   `observeCustomers`'ının SİMETRİĞİ (aynı ledger, `WHERE customer_id=?`).
+3. **Satıcı detayı:** o dükkanla borç/ödeme geçmişi + bakiye + **[Ödeme Yap]** → tutar →
+   `initiatePayment` (PAYMENT yazılır; bakiye canlı düşer). Ödemeyi **hem POS hem müşteri**
+   başlatabilir.
+4. **Onaylar (bekleyen onay):** bir satıcı (POS'tan) müşterinin numarasına veresiye/ödeme
+   isteği açınca, müşteri app'inde **Onayla/Reddet kartı** çıkar (app'li müşteride onay
+   **app-push**, OTP kodu değil — düşük friction). Onaylanınca ledger'a yazılır (tek yazma
+   noktası). app-mobile bunu **foreground polling** ile öğrenir (dinlemez/**çağırır**;
+   **FCM YOK**); background polling WorkManager ile FAZ 4'te.
+5. **Profil:** isim/telefon/email + roller + **"Satıcı ol"**.
+
+**Flow B (seller) — app-mobile satıcı tarafı (Tur 19, mock üstünde):**
+6. **"Satıcı ol"** → dükkan ismi (`setSeller`, `isSeller=true` + `SellerInfo`) → **POS
+   eşleştirme** (numara-eksenli mock, tek onay; `pairWithApp`). Satıcı olunca bottom-nav'a
+   **"Müşterilerim"** sekmesi DİNAMİK eklenir (rol değişince menü değişir).
+7. **Müşterilerim:** satıcının defteri (`observeCustomers(userId)` — sellerId = kendi
+   userId'si) + toplam alacak + arama/filtre. → **müşteri detayı** (borç/ödeme geçmişi).
+8. **Veresiye/ödeme yazma = popup** ([Veresiye Yaz]/[Ödeme Al] → tutar). Keypad/saleFlow
+   YOK (buyer'daki popup deseni). Yazma **onaya gönderilir** (aşağı).
+
+> **ApprovalService — onaya-gönder (Tur 19, tek yazma korunur):** her DEBT/PAYMENT (hangi
+> yönden başlarsa başlasın) karşı tarafın onayından geçer. `requestApproval(fromUserId,
+> sellerId, customerId, amount, type, desc)`: müşteri **CLAIMED** ise (app'li) o kullanıcının
+> Onaylar sekmesine `PendingApproval` düşer (app-push mock); **UNCLAIMED** ise (app'siz)
+> OtpService mock true → **anında yazılır** (SMS-OTP mock). Buyer `initiatePayment` de bu
+> yoldan geçer → iki yön simetrik. Gerçek yazma tek noktada (approvePending veya app'siz
+> anında). Backend gelince sadece `ApprovalService` gövdesi değişir.
+
+> **Mock sınırı:** app-mobile ayrı APK — app-pos'un repo'sunu göremez, backend de yok.
+> "Karşı taraftan gelen onay isteği" app-mobile'ın KENDİ mock repo'sunda `PendingApproval`
+> ile simüle edilir; gerçek mimari (poll → onayla → tek yazma) korunur. Backend gelince
+> istek gerçekten backend'den poll'lanır (FAZ 4/5).
+
+> **QR/NFC → numara eşleşmesi (karar, Tur 17):** eski Flow B'deki "QR/NFC okut → otomatik
+> ekle" yerine sistem **telefon numarası** ekseninde ilerliyor (POS↔müşteri onayı numara +
+> OTP/push üzerinden). QR/NFC credential devri FAZ 8'e ertelendi; app-pos'ta bu tur bir
+> değişiklik yapılmadı (plan notu: postaki QR/NFC alanları numara eşleşmesine taşınacak).
 
 **Gün sonu:** POS lokal ledger toplamı == backend toplamı? → **reconciliation
 raporu** (eşitlik kontrolü).
@@ -310,14 +379,19 @@ Bu turda **yapılmaz**, ama şema/DB tasarımını erken planlamak için not:
 ## 8. Sonraki adımlar (uygulama sırası — app-mobile öne alındı)
 
 **Bitenler:** FAZ 1 (app-pos UI + MVVM + veresiye/ödeme akışı, mock veri, cihazda
-çalışıyor). FAZ 2 başladı: `:core-domain` modülü kuruldu, `User`/`SellerInfo` + Customer
-claim alanı eklendi (bu belge §4).
+çalışıyor). FAZ 2 (`:core-domain` + `User`/`SellerInfo` + Customer claim, bu belge §4;
+app-pos login-gate + profil). **FAZ 6 buyer dikeyi (Tur 17):** app-mobile'ın müşteri tarafı
+mock üstünde kuruldu — telefon+OTP giriş (+claim) → Borçlarım (satıcıya göre) → satıcı
+detayı + Ödeme Yap → Onaylar (Onayla/Reddet, foreground polling) → profil. `:core-domain`
+KOPYALANDI. Cihazda derleniyor. Seller dikeyi ertelendi (bkz. §6 Flow B).
 
 **Sıra (güncel karar — gösterilebilir demo + contract'ı gerçek ihtiyaca göre yazmak
 için app-mobile backend'den ÖNCE):**
-1. **app-mobile UI (mock üstünde):** telefon+OTP hızlı giriş (oto-kayıt) → ödeme
-   geçmişi + profil; profilde "Satıcı ol". POS'un recycler-view/detay asset'lerinden
-   türer. `User` modelini KOPYALAR (ayrı Gradle projesi; mock-pos deseni).
+1. **app-mobile UI (mock üstünde):** ✓ buyer dikeyi (Tur 17) + ✓ **seller dikeyi (Tur 19)**
+   YAPILDI. "Satıcı ol" → dükkan ismi + POS eşleştirme (numara-eksenli mock) → Müşterilerim
+   sekmesi (dinamik) + müşteri detayı + popup veresiye/ödeme yazma. Yazma **ApprovalService**
+   ile onaya gider (app'li müşteri → Onaylar kartı; app'siz → anında, mock SMS-OTP). `User`
+   modeli KOPYALANDI (ayrı Gradle projesi; mock-pos deseni).
 2. **`shared-contracts/openapi.yaml`:** iki client'ın gerçek ekran ihtiyacı görülünce
    ledger + user/auth çekirdeği + yer tutucu `GET /insights`.
 3. **FAZ 3 — `:core-data` (Room):** `FakeRepository` → gerçek Room Repository + outbox;

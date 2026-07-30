@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.app_pos.data.FakeRepository
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -22,9 +25,15 @@ enum class TransactionFilter { ALL, DEBT, PAYMENT }
  * here live. The balance is recomputed from those entries — never read from a
  * stored field — so the append-only rule holds on every screen.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class CustomerDetailViewModel(customerId: String) : ViewModel() {
 
-    private val allTransactions = FakeRepository.observeTransactions(customerId)
+    // Scoped to the signed-in seller: this customer's history with THIS seller only.
+    private val allTransactions =
+        FakeRepository.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(emptyList())
+            else FakeRepository.observeTransactions(user.userId, customerId)
+        }
 
     private val filter = MutableStateFlow(TransactionFilter.ALL)
 
