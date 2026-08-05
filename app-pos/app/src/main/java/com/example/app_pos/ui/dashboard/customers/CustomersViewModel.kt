@@ -2,7 +2,7 @@ package com.example.app_pos.ui.dashboard.customers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.model.Customer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +28,7 @@ enum class CustomerFilter { ALL, WITH_DEBT }
 @OptIn(ExperimentalCoroutinesApi::class)
 class CustomersViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
     private val query = MutableStateFlow("")
     private val filter = MutableStateFlow(CustomerFilter.ALL)
 
@@ -35,8 +36,8 @@ class CustomersViewModel : ViewModel() {
     // switch to that seller's customer flow (flatMapLatest cancels the old seller's
     // flow when the user changes). An empty user yields an empty list.
     private val sellerCustomers =
-        FakeRepository.observeCurrentUser().flatMapLatest { user ->
-            if (user == null) flowOf(emptyList()) else FakeRepository.observeCustomers(user.userId)
+        repo.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(emptyList()) else repo.observeCustomers(user.userId)
         }
 
     val customers: StateFlow<List<Customer>> =
@@ -52,8 +53,8 @@ class CustomersViewModel : ViewModel() {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalReceivableMinor: StateFlow<Long> =
-        FakeRepository.observeCurrentUser().flatMapLatest { user ->
-            if (user == null) flowOf(0L) else FakeRepository.observeTotalReceivableMinor(user.userId)
+        repo.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(0L) else repo.observeTotalReceivableMinor(user.userId)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     fun onSearchChanged(newQuery: String) {

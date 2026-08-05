@@ -2,8 +2,9 @@ package com.example.app_pos.ui.sale
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.FakeRepository
 import com.example.app_pos.data.OtpService
+import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.OrderBody
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,7 @@ enum class OtpStatus { SENDING, READY, VERIFYING, DONE, ERROR }
  */
 class OtpViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
     private val _status = MutableStateFlow(OtpStatus.SENDING)
     val status: StateFlow<OtpStatus> = _status.asStateFlow()
 
@@ -56,6 +58,7 @@ class OtpViewModel : ViewModel() {
         knownCustomerId: String,
         amountMinor: Long,
         type: TransactionType,
+        orderBody: OrderBody? = null,
         onWritten: () -> Unit
     ) {
         _status.value = OtpStatus.VERIFYING
@@ -67,13 +70,15 @@ class OtpViewModel : ViewModel() {
             }
             // The login gate guarantees a signed-in seller here; the null-check is
             // defensive. The entry is booked to this seller's ledger.
-            val sellerId = FakeRepository.currentSellerId() ?: run {
+            val sellerId = repo.currentSellerId() ?: run {
                 _status.value = OtpStatus.ERROR
                 return@launch
             }
             val customerId =
-                if (isNew) FakeRepository.addCustomer(displayName, phone) else knownCustomerId
-            FakeRepository.addTransaction(
+                if (isNew) repo.addCustomer(displayName, phone) else knownCustomerId
+            // orderBody is present only for a basket handoff (DEBT from the PGW); when
+            // set, the basket + its items are persisted and linked. Money-only passes null.
+            repo.addTransaction(
                 Transaction(
                     transactionId = UUID.randomUUID().toString(),
                     sellerId = sellerId,
@@ -82,7 +87,8 @@ class OtpViewModel : ViewModel() {
                     type = type,
                     description = descriptionFor(type),
                     createdAt = CREATED_AT_FORMAT.format(Date())
-                )
+                ),
+                orderBody = orderBody
             )
             _status.value = OtpStatus.DONE
             onWritten()

@@ -16,7 +16,6 @@ import androidx.navigation.Navigation
 import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.app_pos.R
-import com.example.app_pos.data.FakeRepository
 import com.example.app_pos.databinding.FragmentCustomerDetailBinding
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
@@ -44,6 +43,9 @@ class CustomerDetailFragment : Fragment() {
 
     private val adapter = TransactionAdapter()
 
+    // Latest phone from the ViewModel, kept for the pay handoff. Collected below.
+    private var phone: String = ""
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -53,25 +55,30 @@ class CustomerDetailFragment : Fragment() {
         return binding.root
     }
 
-    // The customer's phone: identity for the pay flow and how the merchant tells
-    // two same-named customers apart. Read once here. (Only the phone is used, which
-    // is seller-independent; the seller scope just satisfies the lookup signature.)
-    private val phone: String by lazy {
-        val sellerId = FakeRepository.currentSellerId() ?: return@lazy ""
-        FakeRepository.findCustomerById(sellerId, args.customerId)?.phone.orEmpty()
-    }
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         binding.detailName.text = args.customerName
-        binding.detailPhone.text = phone
 
         setupList()
         setupFilters()
         setupPayButton()
+        observePhone()
         observeBalance()
         observeTransactions()
+    }
+
+    /** The phone is a suspend lookup now, exposed by the ViewModel as a Flow. Keep the
+     *  latest for the pay handoff and show it as it arrives. */
+    private fun observePhone() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.phone.collect {
+                    phone = it
+                    binding.detailPhone.text = it
+                }
+            }
+        }
     }
 
     /**

@@ -11,7 +11,8 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.OrderBodyParser
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.databinding.ActivityMainBinding
 import com.example.app_pos.ui.dashboard.DashboardFragment
 
@@ -29,17 +30,20 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var appBarConfiguration: AppBarConfiguration
+    private val repo = RepositoryProvider.instance
 
     /** True when opened from the payment app; drives the finish-back behaviour. */
     private var isCreditHandoff = false
 
     /**
-     * A CREDIT amount that arrived while the merchant was not signed in. Held until
-     * login succeeds, then the sale flow resumes with it (see onLoginSucceeded).
-     * Saved into the instance state so it survives rotation / process death on the
-     * login screen. null = nothing pending.
+     * A CREDIT orderBody that arrived while the merchant was not signed in. Held
+     * until login succeeds, then the sale flow resumes with it (see
+     * onLoginSucceeded). We keep the raw JSON (not just the amount) so the basket's
+     * items survive the login detour for later product-level use. Saved into the
+     * instance state so it survives rotation / process death on the login screen.
+     * null = nothing pending.
      */
-    private var pendingHandoffAmount: Long? = null
+    private var pendingHandoffOrderBody: String? = null
 
     private val navController: NavController
         get() = (supportFragmentManager
@@ -57,13 +61,11 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             val graph = navController.navInflater.inflate(R.navigation.nav_graph)
             graph.setStartDestination(
-                if (FakeRepository.isSessionValid()) R.id.dashboardFragment else R.id.loginFragment
+                if (repo.isSessionValid()) R.id.dashboardFragment else R.id.loginFragment
             )
             navController.graph = graph
         } else {
-            pendingHandoffAmount =
-                if (savedInstanceState.containsKey(KEY_PENDING_AMOUNT))
-                    savedInstanceState.getLong(KEY_PENDING_AMOUNT) else null
+            pendingHandoffOrderBody = savedInstanceState.getString(KEY_PENDING_ORDER_BODY)
         }
 
         // Shows each destination's label in the action bar and adds the up
@@ -109,15 +111,18 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent) {
         isCreditHandoff = intent.action == ACTION_CREDIT
         if (isCreditHandoff) {
-            val amountMinor = intent.getLongExtra(EXTRA_AMOUNT_MINOR, 0L)
-            if (FakeRepository.isSessionValid()) {
+            // The extra is now the PGW's orderBody JSON. Parse it to the basket
+            // total; the amount then flows through the sale flow exactly as before.
+            val orderBody = intent.getStringExtra(EXTRA_ORDER_BODY)
+            val amountMinor = OrderBodyParser.parse(orderBody)?.totalMinor() ?: 0L
+            if (repo.isSessionValid()) {
                 // Signed in: straight to the sale flow, as before.
                 navController.navigate(R.id.saleFlow, bundleOf("amountMinor" to amountMinor))
             } else {
-                // Not signed in: hold the amount and require login first. The gate is
-                // already the start destination on a cold start; if a CREDIT arrives
-                // while on the dashboard with an expired session, send them to login.
-                pendingHandoffAmount = amountMinor
+                // Not signed in: hold the orderBody and require login first. The gate
+                // is already the start destination on a cold start; if a CREDIT
+                // arrives while on the dashboard with an expired session, go to login.
+                pendingHandoffOrderBody = orderBody
                 if (navController.currentDestination?.id != R.id.loginFragment) {
                     navController.navigate(R.id.action_global_login)
                 }
@@ -214,8 +219,9 @@ class MainActivity : AppCompatActivity() {
      * handoff would.
      */
     fun onLoginSucceeded(): Boolean {
-        val amount = pendingHandoffAmount ?: return false
-        pendingHandoffAmount = null
+        val orderBody = pendingHandoffOrderBody ?: return false
+        pendingHandoffOrderBody = null
+        val amount = OrderBodyParser.parse(orderBody)?.totalMinor() ?: 0L
         navController.navigate(
             R.id.action_global_saleflow_after_login,
             bundleOf("amountMinor" to amount)
@@ -225,7 +231,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        pendingHandoffAmount?.let { outState.putLong(KEY_PENDING_AMOUNT, it) }
+        pendingHandoffOrderBody?.let { outState.putString(KEY_PENDING_ORDER_BODY, it) }
     }
 
     companion object {
@@ -234,9 +240,12 @@ class MainActivity : AppCompatActivity() {
         // action + extra. Duplicated across the two apps on purpose: they share
         // no code (separate APKs); could move to shared-contracts later.
         const val ACTION_CREDIT = "com.example.app_pos.action.CREDIT"
-        const val EXTRA_AMOUNT_MINOR = "amount_minor"
 
-        // Instance-state key for a CREDIT amount pending login (survives rotation).
-        private const val KEY_PENDING_AMOUNT = "pending_handoff_amount"
+        // The extra is the PGW's orderBody JSON (basketID + items), mirroring the
+        // real Token payment gateway payload; mock-pos puts the same key.
+        const val EXTRA_ORDER_BODY = "orderBody"
+
+        // Instance-state key for a CREDIT orderBody pending login (survives rotation).
+        private const val KEY_PENDING_ORDER_BODY = "pending_handoff_order_body"
     }
 }

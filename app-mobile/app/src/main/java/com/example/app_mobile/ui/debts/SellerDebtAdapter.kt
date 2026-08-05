@@ -6,7 +6,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.app_mobile.R
-import com.example.app_mobile.data.SellerDebt
+import com.example.app_pos.model.SellerDebt
 import com.example.app_mobile.databinding.ItemSellerDebtBinding
 import com.example.app_mobile.util.toTlString
 

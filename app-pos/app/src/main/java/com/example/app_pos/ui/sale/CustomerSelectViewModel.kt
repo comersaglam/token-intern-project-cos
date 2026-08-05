@@ -2,7 +2,7 @@ package com.example.app_pos.ui.sale
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.model.Customer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.stateIn
 @OptIn(ExperimentalCoroutinesApi::class)
 class CustomerSelectViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
     private val _query = MutableStateFlow("")
 
     /** The raw query, so the screen can tell "not searched yet" from "no hits". */
@@ -35,8 +36,8 @@ class CustomerSelectViewModel : ViewModel() {
 
     // The signed-in seller's own customers (see CustomersViewModel for the pattern).
     private val sellerCustomers =
-        FakeRepository.observeCurrentUser().flatMapLatest { user ->
-            if (user == null) flowOf(emptyList()) else FakeRepository.observeCustomers(user.userId)
+        repo.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(emptyList()) else repo.observeCustomers(user.userId)
         }
 
     /** Customers matching the current query; empty until the merchant types. */

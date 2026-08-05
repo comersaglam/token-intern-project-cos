@@ -19,6 +19,21 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:text="Ahmet Bakkal" />
 
+    <!-- Hidden when the shop has not set a phone (mirrors the customer screen, where
+         the phone is mandatory and always shown). -->
+    <TextView
+        android:id="@+id/detailShopPhone"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="2dp"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/detailShopName"
+        tools:text="+902121112233" />
+
     <TextView
         android:id="@+id/detailBalanceLabel"
         android:layout_width="wrap_content"
@@ -29,7 +44,7 @@
         android:textColor="?attr/colorOnSurfaceVariant"
         android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/detailShopName" />
+        app:layout_constraintTop_toBottomOf="@id/detailShopPhone" />
 
     <TextView
         android:id="@+id/detailBalance"

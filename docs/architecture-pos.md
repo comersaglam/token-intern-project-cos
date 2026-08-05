@@ -392,10 +392,15 @@ için app-mobile backend'den ÖNCE):**
    sekmesi (dinamik) + müşteri detayı + popup veresiye/ödeme yazma. Yazma **ApprovalService**
    ile onaya gider (app'li müşteri → Onaylar kartı; app'siz → anında, mock SMS-OTP). `User`
    modeli KOPYALANDI (ayrı Gradle projesi; mock-pos deseni).
-2. **`shared-contracts/openapi.yaml`:** iki client'ın gerçek ekran ihtiyacı görülünce
-   ledger + user/auth çekirdeği + yer tutucu `GET /insights`.
-3. **FAZ 3 — `:core-data` (Room):** `FakeRepository` → gerçek Room Repository + outbox;
-   `balanceOf` domain'e saf fonksiyon. Kalıcılık burada gelir (cihazda).
-4. **Backend:** `:core-network` (Retrofit) + Sync + mock server (Prism, openapi'dan) →
-   gerçek backend (Docker DB + endpoint'ler) + OTP'yi gerçeğe bağlama.
+2. **`shared-contracts/openapi.yaml`:** ✓ **YAPILDI (Tur 22)** — tüm ledger/user/auth/customer/
+   approval endpoint'leri + ileri-faz yer tutucular; seed-hizalı example'lar; Prism mock çalışıyor.
+   Endpoint/tablo tasarımı: [api-endpoints.md](api-endpoints.md) + [db-schema.md](db-schema.md).
+3. **FAZ 3 — `:core-data` (Room):** ✓ **app-pos (Tur 23)** + ✓ **app-mobile (Tur 24)** YAPILDI —
+   `FakeRepository` → kalıcı `RoomRepository` (Repository interface, domain'de); `balanceOf` saf
+   fonksiyon; ileri-faz tabloları iskele (outbox/fx_rates/credit_offers/audit_log/devices).
+   app-mobile'da ek olarak: **approvals AKTİF** (Onaylar sekmesi), buyer-scoped okumalar (JOIN'li
+   `observeDebtsBySeller`), `CustomerLookup` 3-dallı müşteri ekleme (FAB → dialog → detay).
+   Tarih sıralama bug'ı iki projede de düzeltildi (`createdAt` metni gün-önce sıralıyordu).
+4. **Backend:** `:core-network` (Retrofit) + Sync + mock server (Prism, openapi'dan hazır) →
+   gerçek backend (Docker DB + endpoint'ler) + OTP'yi gerçeğe bağlama. Üç-hat onay UI dikeyi de burada/ayrı tur.
 5. Regülasyon (KVKK/PCI) — canlı öncesi gate.

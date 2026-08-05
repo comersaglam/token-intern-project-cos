@@ -2,12 +2,13 @@ package com.example.app_mobile.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_mobile.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.model.User
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * What the profile screen shows: the signed-in user plus, for a seller, whether the
@@ -21,35 +22,43 @@ data class ProfileUiState(
 
 class ProfileViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
+
     val uiState: StateFlow<ProfileUiState?> =
         combine(
-            FakeRepository.observeCurrentUser(),
-            FakeRepository.isPairedWithApp
+            repo.observeCurrentUser(),
+            repo.isPairedWithApp
         ) { user, paired ->
             if (user == null) null else ProfileUiState(user, paired)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun logout() = FakeRepository.logout()
+    /** Ends the session; the caller then navigates back to the login gate. The repo
+     *  call is suspend now (persisted state), so it runs in viewModelScope. */
+    fun logout() {
+        viewModelScope.launch { repo.logout() }
+    }
 
     fun updateDisplayName(name: String) {
-        currentUserId()?.let { FakeRepository.updateDisplayName(it, name) }
+        currentUserId()?.let { id -> viewModelScope.launch { repo.updateDisplayName(id, name) } }
     }
 
     fun updateEmail(email: String) {
-        currentUserId()?.let { FakeRepository.updateEmail(it, email) }
+        currentUserId()?.let { id -> viewModelScope.launch { repo.updateEmail(id, email) } }
     }
 
     /** "Satıcı ol": flips the account into a seller with the given shop name. */
     fun becomeSeller(shopName: String) {
         if (shopName.isBlank()) return
-        currentUserId()?.let { FakeRepository.setSeller(it, shopName) }
+        currentUserId()?.let { id -> viewModelScope.launch { repo.setSeller(id, shopName) } }
     }
 
     /** Updates just the shop name (already a seller). */
     fun updateShopName(shopName: String) {
         if (shopName.isBlank()) return
-        currentUserId()?.let { FakeRepository.updateShopName(it, shopName) }
+        currentUserId()?.let { id -> viewModelScope.launch { repo.updateShopName(id, shopName) } }
     }
 
-    private fun currentUserId(): String? = uiState.value?.user?.userId
+    // Read from the session, not from uiState: stateIn(WhileSubscribed) holds null
+    // whenever nothing is collecting, which would silently drop an edit.
+    private fun currentUserId(): String? = repo.currentUserId()
 }

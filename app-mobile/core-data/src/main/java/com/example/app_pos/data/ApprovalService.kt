@@ -1,4 +1,4 @@
-package com.example.app_mobile.data
+package com.example.app_pos.data
 
 import kotlinx.coroutines.delay
 
@@ -9,14 +9,17 @@ import kotlinx.coroutines.delay
  *
  * MOCK for now: there is no backend, so this pretends the request went out. The
  * SIGNATURE is what the real service will use, so wiring a backend later (FAZ 4/5)
- * changes only the body — the callers (seller write popup, buyer payment) stay put.
+ * changes only the body — the callers stay put.
  *
- * The two counterparty cases are branched by the CALLER (FakeRepository.requestApproval):
- *  - has the app (CLAIMED): a PendingApproval lands in their Onaylar tab (in-app push).
+ * The two counterparty cases are branched by the CALLER (RoomRepository.requestApproval):
+ *  - has the app (CLAIMED): an approval row lands in their Onaylar tab (in-app push).
  *  - no app (UNCLAIMED): an SMS OTP would be sent; mocked as auto-approved, so the
  *    entry is written immediately.
+ *
+ * Lives in :core-data (not :app) because the repository calls it: the data layer
+ * cannot depend on the UI module.
  */
-object ApprovalService {
+internal object ApprovalService {
 
     /** Pretends to POST an approval request to the backend. Mock: always accepted. */
     suspend fun requestApproval(

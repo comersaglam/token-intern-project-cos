@@ -884,3 +884,367 @@ Buyer regresyon: Borçlarım/Onaylar/Profil aynı.
 
 **Sıradaki:** kullanıcı feedback'i sonrası düzeltmeler; sonra shared-contracts/openapi.yaml
 (iki client + iki rol ihtiyacı netleşti) → FAZ 3 (Room).
+
+### 2026-07-30 — Tur 20: Token orderBody handoff (mock-pos=PGW taklidi) — Aşama 0
+
+Handoff'u Token Sardis paymentgateway'in GERÇEK `orderBody` JSON formatına taşıdık. Eskiden
+mock-pos app-pos'a basit `amount_minor: Long` extra gönderiyordu; artık PGW'nin bize attığı
+`orderBody` (basketID + items[]) şeklini kullanıyor. **Default para-only**, ama items[] taşınıp
+ileride ürün-bazlı veresiye/ödeme için veri hazır.
+
+**Gerçek akış / karar:** sepet app'i barkod üretip sepeti PGW'ye → PGW bize (`orderBody`) devreder.
+Bizde sepet app'i YOK → **mock-pos = PGW taklidi**, orderBody'yi doğrudan app-pos'a atar. mock-pos'a
+mock sepet konuldu (istenirse sepetten, istenirse elle tutar). items ayrı Basket+BasketItem
+tablolarında saklanacak (Aşama 3/Room); Transaction'a `basketId?` (para-only'de null).
+
+**Yapılanlar:**
+- `:core-domain` yeni `OrderBody.kt`: `OrderBody(basketId, createInvoice, documentType, isVoid,
+  items)` + `OrderItem(name, price, quantity, taxPercent, sectionNo, status, type, limit)`. Saf
+  (JSON'suz). **Ölçek tek yerde:** `price`=kuruş/birim, `quantity` ve `taxPercent` ×1000;
+  `lineTotalMinor = price × quantity / 1000`, `totalMinor = Σ lineTotal`.
+- app-pos `data/OrderBodyParser.kt`: org.json ile JSON→OrderBody (Android built-in, ekstra bağımlılık
+  yok). Bozuk/eksik JSON → null (başka app'ten gelen kötü girdide crash yerine güvenli fallback).
+  Wire format (`basketID`, alan adları) TEK yerde.
+- mock-pos `MockBasket.kt` (PGW taklidi): `moneyOnly(amount)` = tek sentetik kalemli orderBody
+  (toplam = girilen tutar → davranış birebir eski); `SAMPLES` = demo sepetleri; `toJson` PGW şekli.
+- mock-pos `MainActivity`: VERESİYE **tıkla** = para-only (bugünkü akış); **uzun-bas** = mock sepet
+  seç (AlertDialog). Extra `amount_minor` → `orderBody` (JSON). `FLAG_ACTIVITY_NEW_TASK` korundu.
+- app-pos `MainActivity`: extra `orderBody` okunur → parse → `totalMinor()` = amountMinor →
+  mevcut saleFlow yolu (`bundleOf("amountMinor" to ...)`) **aynen**. Login-bekleyen handoff artık
+  JSON string saklar (items login sonrası da hayatta). `EXTRA_ORDER_BODY`/`KEY_PENDING_ORDER_BODY`.
+- app-pos `SaleViewModel`: opsiyonel `orderBody: OrderBody?` alanı (yazım anında sepeti saklamak
+  için; tam plumbing Aşama 3/Room'da write consume edince).
+
+**Kritik hassasiyet korundu:** `isCreditHandoff`/`singleTask`/`onNewIntent`/saleFlow nested-graph
+giriş kapısı DAVRANIŞÇA DEĞİŞMEDİ — sadece extra okuma satırı JSON'a döndü (Tur 10-11 dersleri).
+
+**Öğrenilenler:**
+- **Ölçekleri tek noktada gizle:** ×1000 quantity/taxPercent yalnızca `lineTotalMinor` + parser'da;
+  gerisi typed OrderBody ile çalışır (float yok, para hep Long kuruş).
+- **Ayrı APK = kod paylaşımı yok:** JSON *üreten* MockBasket mock-pos'ta, *parse eden* OrderBodyParser
+  app-pos'ta; sabitler iki tarafta kopya (ileride shared-contracts `OrderBody` şemasına bağlanacak).
+- **Handoff kırılganlığına dokunma:** pending değeri Long→JSON'a çevrilirken bile nav/handoff yolu
+  bit-uyumlu bırakıldı; suçlu tek nokta (extra okuma) kalır.
+
+**Doğrulama:** `:core-domain:build` ✓, app-pos `:app:compileDebugKotlin` ✓, mock-pos
+`:app:compileDebugKotlin` ✓ (hepsi offline, uyarısız). **Cihaz testi BEKLİYOR** (kullanıcı):
+`mockbuild` + `posbuild`; sonra (a) tutar gir → VERESİYE (para-only) → app-pos doğru toplam →
+müşteri seç → onay → OTP → mock-pos'a dön; (b) VERESİYE'ye **uzun bas** → "Market sepeti" →
+app-pos'ta toplam 107,00 TL görünmeli. Doğrudan `adb shell am start` ile de orderBody test edilebilir.
+
+**Sıradaki:** Aşama 1 — `docs/api-and-schema-design.md` (endpoint + SQL tablo tasarımı, ONAY noktası)
+→ Aşama 2 openapi.yaml + Prism → Aşama 3 Room (app-pos) → Aşama 4 Room (app-mobile).
+
+### 2026-07-30 — Tur 21: Aşama 1 — API & DB tasarım dokümanları (ONAY noktası, kod yok)
+
+openapi.yaml + Room yazılmadan ÖNCE tüm endpoint (tam body) + tablo (tam kolon) tasarımı. Kullanıcı
+feedback'iyle iki dosyaya bölündü ve genişletildi:
+- **`docs/api-endpoints.md`** — her endpoint'in alan-seviyesi request/response JSON'u (özet değil).
+  Bölüm A (ŞU AN): auth/otp, user/profil, customer (seller-scoped), transactions (Idempotency-Key +
+  opsiyonel basket), buyer-scoped (me/debts…), **approvals (ÜÇ HAT, yön alanlı)**. Bölüm B (ileri-faz):
+  sync, PGW settle, insights, micro-credit, fx-rates, audit-log, devices.
+- **`docs/db-schema.md`** — her tablonun tam kolon listesi + DDL (SQLite) + üç-temsil eşleme matrisi.
+  Bölüm A: users, customers, transactions (+`basket_id?`, `settled_via_pgw`, `receipt_no?`), baskets,
+  basket_items, **approvals** (approval_id, initiator_role, target_user_id, channel, status…).
+  Bölüm B (kod iskeleti yazılacak, bağlama ertelenecek): outbox, fx_rates, credit_offers, audit_log, devices.
+- Eski `api-and-schema-design.md` → iki yeni dosyaya yönlendirme (tek kaynak).
+
+**Kullanıcı feedback'iyle netleşen kararlar (plan + memory'e işlendi):**
+- **Üç onay hattı, tek `approvals` şeması:** (1) buyer-mobile→seller-POS, (2) seller-POS→buyer-mobile,
+  (3) seller-mobile→buyer-mobile. Yön alanları: `initiator_role`, `target_user_id`, `channel`.
+  Approval **app-pos'ta da** var (önceki taslakta yoktu).
+- **Onay sonrası PGW = SADECE PAYMENT:** DEBT onayla biter (defter); PAYMENT onay sonrası POS→PGW
+  (nakit/kart→fiş). Şema alanları (`settled_via_pgw`/`receipt_no?`) + endpoint (`/settle`) modellendi;
+  gerçek `am start paymentgateway` intent'i (Aşama 0'ın TERSİ) FAZ 8.
+- **İleri-faz tabloları KODA da eklenecek:** sadece dokümanda değil, Aşama 3'te Room entity+DAO+
+  interface iskelesi olarak (sadece bağlama ertelenir). "Şu an gerekeni detaylı + geleceği taslak."
+- **fx_rates = döviz kuru** (USD/EUR/altın, geriye dönük enflasyon/mikrokredi hesabı — tasarim.md son not).
+
+**Doğrulama:** kod yok (tasarım turu); **kullanıcı onayı BEKLİYOR** (endpoint body'leri + tablolar).
+Onaylanınca Aşama 2 (openapi.yaml + Prism).
+
+**Sıradaki:** Aşama 2 — `shared-contracts/openapi.yaml` (bu iki dokümandan) + Prism mock → Aşama 3
+Room (app-pos, ileri-faz iskele dahil) → Aşama 4 Room (app-mobile).
+
+### 2026-07-30 — Tur 23: Aşama 3 — app-pos `:core-data` (Room) — FakeRepository → kalıcı Room (FAZ 3)
+
+`FakeRepository` (RAM) → Room tabanlı kalıcı `RoomRepository`. UI/ViewModel mimarisi korundu
+(MVVM ödülü): DAO Flow'ları FakeRepository StateFlow'larıyla aynı davrandığından ViewModel'lerin
+İÇ MANTIĞI değişmedi — sadece `FakeRepository.x` → `repo.x` (repo = Repository interface).
+
+**Modül + altyapı (AGP 9 + KSP + Room):**
+- Yeni `:core-data` (`com.android.library`) modülü: Room 2.7.1 + KSP `2.2.10-2.0.2` (Kotlin'e
+  kilitli) + coroutines. Bağımlılık: `:app → :core-data → :core-domain`. schemaLocation export.
+- **İki AGP 9 tökezlemesi çözüldü** (memory'e kaydedildi): (1) `android.disallowKotlinSourceSets=
+  false` (built-in Kotlin, KSP'nin kotlin.sourceSets kullanımını yasaklıyordu); (2) KSP versiyonu
+  `<kotlin>-<ksp>` formatında olmalı. Root'a android-library + ksp plugin (apply false).
+
+**Room katmanı (:core-data):**
+- Entity'ler: `UserEntity` (SellerInfo düz shop_* kolonları), `CustomerEntity`, `TransactionEntity`
+  (+basketId?/settledViaPgw/receiptNo?), `BasketEntity`, `BasketItemEntity`, `ApprovalEntity` (üç-hat
+  alanlı). + İLERİ FAZ iskele (aynı dosyada yorum bloğu): Outbox/FxRate/CreditOffer/AuditLog/Device.
+- DAO'lar: FakeRepository'nin her observe/find karşılığı, Flow döner. Append-only: sadece @Insert
+  (IGNORE = idempotency), balance = SQL SUM (saklanmaz). Telefon digit-normalize SQL'de (REPLACE).
+- `AppDatabase` (v1, 11 entity), `Mappers.kt` (Entity↔Domain, SellerInfo topla/düz, OrderBody→Basket),
+  `RoomRepository : Repository`, `RepositoryProvider` (singleton, DI yok), `SeedCallback` (ilk açılışta
+  u_owner + c1-c5 + t1-t10 seed → bakiyeler FakeRepository ile birebir aynı).
+- `:core-domain`: `Repository` interface (iki impl'in ortak kontratı) + `balanceOf` saf fonksiyon
+  (domain'e taşındı) + coroutines-core (Flow tipi için; hâlâ saf JVM, Android importu yok).
+
+**:app bağlama (13 dosya):**
+- Yeni `App : Application` → `RepositoryProvider.get(this)` (Room'u bir kez kurar); manifest `.App`.
+  ViewModel'ler `RepositoryProvider.instance` (no-arg accessor) ile eriştir. `:app` → `:core-data` dep.
+- **Senkron→suspend gerginliği çözüldü** (kullanıcı kararı: "provider + interface, gerekli yerde
+  suspend"): DB yazan metodlar suspend (çoğu zaten viewModelScope.launch içinde). Senkron kalan
+  session (`isSessionValid`/`currentSellerId`) RAM'de → interface'te sync kaldı. Fragment'taki iki
+  senkron okuma reaktife çevrildi: `PhoneFragment.customerPhoneExists` (launch), `OtpFragment.hasApp`
+  (cache + resolveHasApp suspend), `CustomerDetailFragment.phone` (VM'e StateFlow olarak taşındı).
+- `OtpViewModel.verifyAndWrite` (tek yazma noktası) `orderBody` parametresi aldı → sepet handoff'unda
+  basket+items da yazılır (Aşama 0'ın Room karşılığı; para-only'de null).
+- `FakeRepository.kt` SİLİNDİ (artık ölü kod; git'te duruyor). RoomRepository tek impl.
+
+**Öğrenilenler:**
+- **MVVM ödülü gerçek:** reader VM'lerde SADECE `FakeRepository.` → `repo.` (Flow imzaları aynı);
+  iç mantık/StateFlow zinciri değişmedi. Senkron→suspend sadece yazan/tekil-okuyan yerlerde iş çıkardı.
+- **Session RAM'de kalmalı:** `isSessionValid` DB I/O değil (mock token); interface'te sync tutmak
+  MainActivity.onCreate'in graf-öncesi start-destination seçimini bozmadan bıraktı.
+- **Room DAO'da digit-normalize:** telefon eşleşmesi SQL `REPLACE(...)` ile (FakeRepository'nin
+  Kotlin filter'ının karşılığı) — lookup her formatta çalışır.
+
+**Doğrulama:** `:core-domain:build` ✓, `:core-data:assembleDebug` ✓ (Room codegen — tüm @Query SQL +
+entity ilişkileri geçerli), `:app:compileDebugKotlin` ✓ (13 bağlanan dosya + App). **NOT:**
+`:app:assembleDebug` sandbox'ta `jlink`/JdkImageTransform ortam hatası veriyor (VSCode Red Hat Java
+JRE'sinde jlink yok — KOD BUGI DEĞİL; library modül tetiklemez, application modül tetikler; memory'de).
+Tam APK = kullanıcının `posbuild`'i (Android Studio JBR). **Cihaz testi (kullanıcı):** `posbuild`;
+app KAPANIP AÇILINCA veri KALICI (RAM sıfırlanmıyor — FAZ 3'ün asıl kazanımı); mevcut akışlar (login,
+veresiye mock-pos→onay→OTP→yaz, ödeme, yeni müşteri, detay, profil) aynı davranmalı; orderBody sepet
+handoff'unda basket_items dolmalı. Bir bug: build sonucunu grep ile doğrula (`| tail` pipe exit code'u
+gizler — memory'de).
+
+**Sıradaki:** Aşama 4 — app-mobile `:core-data` (Room kopyası) + buyer/seller okumalar + claim +
+`PendingApproval` üç-hat alanlarıyla genişletme (davranış aynı, mock değerleri türetir).
+
+### 2026-07-30 — Tur 22: Aşama 2 — shared-contracts/openapi.yaml + Prism mock (A tamamlandı)
+
+Contract yazıldı, lint temiz, Prism mock seed-hizalı yanıt veriyor. **Kritik: app-mobile
+FakeRepository'si TAM okundu** (önceki turlarda docs'tan planlamıştım; kullanıcı "iki repo farklı"
+diye uyardı — doğruydu, iki seed ve approval yüzeyi ayrışıyor).
+
+**Yapılanlar:**
+- `shared-contracts/openapi.yaml` (OpenAPI 3.0.3): tüm ŞU AN endpoint'leri (auth/otp, user, customer,
+  transactions+Idempotency-Key+opsiyonel basket, buyer-scoped, approvals) + `future` tag'li ileri-faz
+  (sync, settle, insights, credit-offers, devices). Şemalar: OrderBody/OrderItem, Transaction
+  (+settled_via_pgw/receipt_no), Customer, User (+SellerInfo), Balance, Approval, SellerDebt, enum'lar.
+- `shared-contracts/README.md`: Prism kullanımı + seed açıklaması + lint + codegen notu.
+- **Example'lar TEK BİRLEŞİK seed'e göre** (iki repo kapsanır): schema-level (canonical) +
+  response-level (customers→c1-c5, me/debts→Ayşe 100+Ahmet 40, approvals→p1/p2, transactions→c1 geçmişi).
+  Değerler FakeRepository kodundan alındı.
+- **Approval şeması uzlaştırıldı:** app-mobile'ın GERÇEK `PendingApproval` alanları (`shop_name`,
+  `requested_at`) + ileri üç-hat alanları (`initiator_role`/`target_user_id`/`channel`). db-schema.md
+  + api-endpoints.md senkronlandı. (Üç-hat davranışı + app-pos Onaylar UI = AYRI tur, Tur 21 kararı.)
+
+**Öğrenilenler:**
+- **Prism modu TERS SEZGİLİ:** `mock openapi.yaml` (flag YOK) = static/example (yaml example'larını
+  döner). `-d`/`--dynamic` = şemadan RASTGELE üretir, example'ları YOKSAYAR. Örnekleri görmek için
+  `-d` KOYMA. (İlk denemede `-d` ile gibberish geldi; flag'siz seed-hizalı çıktı.)
+- **Example = spec'in bedava yan ürünü (kullanıcı önerisi):** ayrı altyapı değil; zaten yazılan
+  spec'e örnek eklemek Prism'i gerçekçi demo'ya çevirir (rastgele yerine seed). Codegen'de de örnek olur.
+- **Docs'tan planlama ≠ koddan planlama:** app-mobile seed'i (u_market, m1/o1, t1-t13, u1@Ayşe=100)
+  app-pos'tan (c1-c5 tek satıcı) farklıydı; contract/Room için GERÇEK repo okunmalı. `nullable`+`allOf`
+  OpenAPI 3.0'da `type: object` ister (Redocly nullable-type-sibling); flow-YAML'da parantez/virgül
+  description'ı bozar → block style.
+
+**Doğrulama:** `npx @redocly/cli lint` → 0 error (55 warning stil). Prism (default mode) →
+`/customers` 5 müşteri doğru bakiyeli, `/me/debts` iki dükkan, `/balances?customer_id=c1`=4000 ✓.
+**Kullanıcı testi:** `npx @stoplight/prism-cli mock shared-contracts/openapi.yaml` + curl'ler
+(README'de). Retrofit bağlantısı = FAZ 4 (bu turda değil).
+
+**Sıradaki:** Aşama 3 — app-pos `:core-data` (Room): entity/DAO/mapper/RoomRepository (ŞU AN
+bağlanan: users/customers/transactions/baskets/basket_items/approvals-iskele) + ileri-faz iskele
+(outbox/fx_rates/credit_offers/audit_log/devices — entity+DAO+interface, bağlama yok). Sonra Aşama 4.
+
+### 2026-08-05 — Tur 24: Aşama 4 — app-mobile `:core-data` (Room) + müşteri ekleme (3-dal) + sıralama bug'ı
+
+app-mobile `FakeRepository` (RAM) → kalıcı Room. app-pos Tur 23'ün deseni birebir kopyalandı;
+üç bilinçli fark: **approvals AKTİF** (app-pos'ta iskele), **buyer-scoped okumalar** var,
+**OrderBody/basket yok** (bu tarafta PGW handoff yok — tablolar yine de şema eşliği için duruyor).
+
+**Modül + domain:**
+- Yeni `:core-data` (`com.android.library` + KSP). `libs.versions.toml`'a room/ksp/coroutines +
+  **`android-library` plugin alias'ı** (app-mobile'da yoktu). `gradle.properties`'e
+  **`android.disallowKotlinSourceSets=false`** (AGP 9 + KSP dersi; app-mobile'da eksikti).
+- `:core-domain` (artık coroutines-core'a bağlı — `Flow` kontrat için): yeni `Repository`
+  interface, `Ledger.kt` (`balanceOf` — iki projede ayrışmıştı, kapandı), `CustomerLookup`
+  sealed tip, ve `FakeRepository`'den TAŞINAN `SellerDebt` + `PendingApproval`.
+- İsim farkı bilinçli: `currentUserId()` (app-pos'ta `currentSellerId()`) — burada kullanıcı
+  iki rolde olabilir, 5 çağıran zaten bu adı kullanıyordu.
+
+**Room katmanı:** 11 entity (app-pos'la aynı), DAO'lar + app-mobile'a özel sorgular:
+`observeDebtsBySeller` (**LEFT JOIN users** ile shopName + GROUP BY SUM — buyer ana ekranı,
+tek round-trip), `observeForBuyerSeller`, `observeBuyerTotalDebt/BalanceWithSeller`,
+`customerIdForBuyerSeller` (fallback YOK — geçen turun düzeltmesi korundu), `claimedBy`.
+`SeedCallback`: 4 user / 6 customer (u1'in İKİ kaydı: c1+m1 — çok-dükkan vakası) / 13 tx /
+2 approval. `ApprovalService` `:app`'ten `:core-data`'ya taşındı (bağımlılık yönü zorunluluğu).
+
+**:app bağlama:** yeni `App.kt` + manifest `android:name=".App"` (**yoktu** — olmadan
+`RepositoryProvider.instance` ilk ViewModel'de patlar). 8 ViewModel'e `repo` alanı; suspend
+yazmalar `viewModelScope.launch` ile sarıldı (ApprovalsVM approve/reject, ProfileVM 6 nokta,
+LoginVM `signIn` → `suspend`). `MainActivity` login gate'i **hiç değişmedi** (session RAM'de →
+`isSessionValid()` sync kaldı). Tek yapısal değişiklik: `CustomerDetailFragment`'ın
+`by lazy { findCustomerById }` bloğu → VM'de `phone`/`isClaimed` StateFlow (suspend barındıramaz).
+`ProfileViewModel.currentUserId()` artık `repo.currentUserId()` okuyor — `uiState.value`
+`WhileSubscribed` yüzünden null olabiliyordu (latent bug, Room'la büyürdü).
+
+**Müşteri ekleme (b·3, YENİ):** Müşterilerim'e FAB → isim+telefon dialogu → `lookupCustomerForSeller`
+3 dalı: **New** → kayıt açılır → detaya git; **KnownToOtherSeller** → "sistemde X adına kayıtlı"
+onayı → mevcut kayıt kullanılır → detaya git; **AlreadyMine** → inline hata, dialog açık kalır.
+İlk veresiye detaydaki mevcut popup'la yazılır — o an listede belirir (sahiplik ledger'da).
+
+**GERÇEK BUG — tarih sıralaması (her iki projede düzeltildi):** `createdAt` = `"dd.MM.yyyy HH:mm"`;
+`ORDER BY createdAt` lexicographic → **önce GÜNE** bakıyor. `05.08.2026` , `20.07.2026`'nın
+ALTINA düşüyordu. Tüm seed Temmuz olduğu için görünmüyordu. Çözüm (DAO-only, şema değişmez):
+`ORDER BY substr(createdAt,7,4)||substr(createdAt,4,2)||substr(createdAt,1,2)||substr(createdAt,12)`.
+**app-pos'a da geri taşındı** (kullanıcı kararı) — iki proje ayrışmasın.
+
+**Öğrenilenler:**
+- **Silinecek dosyanın barındırdığı public tipleri ÖNCE taşı.** `SellerDebt`/`PendingApproval`
+  `FakeRepository.kt` içinde top-level'dı; 4 UI dosyası import ediyordu. Domain'e taşımadan
+  silmek cleanup adımını kırardı.
+- **Yorumlarda sınıf adı geçiyorsa toplu sed onları da bozar.** `FakeRepository.` → `repo.`
+  dönüşümü `OtpService` KDoc'unu bozdu; derleyici yakalamaz, elle kontrol gerekti.
+- **Onay satırını silme, status'ünü değiştir.** Bekleyen sorgusu zaten filtreliyor → kullanıcıya
+  aynı, denetim izi bedava. `PendingApproval.customerId` (geçen tur eklendi) burada şemaya oturdu.
+- **`stateIn(WhileSubscribed)` senkron okuma için güvenilmez:** kimse collect etmiyorken `null`.
+  Session gibi RAM state'i doğrudan repo'dan okumak doğrusu.
+
+**Doğrulama:** app-mobile `:core-domain:build` ✓ + `:core-data:assembleDebug` ✓ (Room KSP tüm
+@Query SQL'ini — join/subquery/substr dahil — derleme zamanında doğruladı) + `:app:compileDebugKotlin` ✓.
+app-pos regresyon ✓ (üç modül). Tek uyarı: `MoneyFormat`'ta eski `Locale` (bu turla ilgisiz).
+**Cihaz testi BEKLİYOR** (`mobilebuild`): (1) kalıcılık — force-stop sonrası oturum gider ama
+ledger/profil kalır; (2) buyer u1 → Borçlarım iki satır (Ayşe 100 + Ahmet 40 = 140); (3) onay →
+bakiye 90'a çıkar; (4) seller u_owner → Müşterilerim 3 kişi, toplam 235,50; Fatma (app'siz) anında
+yazılır / Mehmet (app'li) onaya gider; (5) FAB 3 dalı; (6) cihaz tarihini 05.08.2026 yapıp yeni
+kayıt → geçmişte EN ÜSTTE görünmeli (sıralama fix'i).
+
+**Sıradaki:** FAZ 4 — `:core-network` (Retrofit + DTO + AuthInterceptor) + outbox/WorkManager sync
+(tablo hazır, bağlama yok) + Prism'e karşı uçtan uca test. DI kararı (Hilt vs Factory) burada
+gerekli olacak — bağımlılık grafiği büyüyor.
+
+### 2026-08-05 — Tur 24b: Onay YÖNÜ bug'ı (cihaz testinde bulundu)
+
+**Bug (kullanıcı buldu):** `0555 444 3322` ile Ayşe Market'e ödeme yapılınca onay **kendi
+kutusuna** düştü. Kök neden: `requestApproval` onaylayanı her zaman `row.claimedByUserId`
+(müşteri kaydının sahibi) olarak seçiyordu. Satıcı→alıcı yönünde doğru, ama **alıcı ödeme
+başlattığında** `customerId` zaten alıcının kendi kaydı → onay başlatana geri dönüyordu.
+
+**Düzeltme:** onaylayan yöne göre belirleniyor —
+`if (fromUserId == sellerId) row.claimedByUserId else sellerId`. Yani kural artık kodda açık:
+**isteği başlatan onaylamaz, karşı taraf onaylar.**
+
+**Yan düzeltmeler (aynı kök nedenin izleri):**
+- `PendingApproval.buyerUserId` → **`approverUserId`**. Eski ad "alıcı onaylar" varsayımını
+  taşıyordu; artık her iki taraf da onaylayan olabilir.
+- `PendingApproval.shopName` → **`counterpartyName`**, ve `requestApproval` onu yöne göre
+  dolduruyor (satıcı başlattıysa dükkan adı, alıcı başlattıysa müşteri adı). Aksi halde
+  satıcının kutusundaki kartta **kendi dükkan adı** yazıyordu — kimin ödediği belirsizdi.
+
+**Öğrenilenler:**
+- **Yön alanını veriden türetme, açıkça sor.** "Onaylayan = müşteri kaydının sahibi" tek yön
+  için doğruydu; iki yönlü akışta sessizce yanlış oldu. `initiator == seller?` karşılaştırması
+  kuralı okunur kılıyor. Şema (`db-schema.md` A.6) `initiator_role` ile bunu zaten öngörmüştü.
+- **Alan adı yanlış varsayımı taşır:** `buyerUserId` adı, kodun onu "onaylayan" olarak
+  kullandığını gizliyordu. Yeniden adlandırma bug'ın tekrarını zorlaştırır.
+
+**Doğrulama:** üç modül ✓. **Cihaz testi:** `docs/test-hesaplari.md` → "Onay YÖNÜ" bölümü
+(alıcı ödeme yapar → onay SATICIYA düşer, kendine değil).
+
+**Ayrıca:** `docs/test-hesaplari.md` yazıldı — seed hesapları, hangi numara ne işe yarar,
+senaryo→numara eşlemesi, iki app'in ayrı seed'i, checklist.
+
+### 2026-08-05 — Tur 25: app-mobile UI/UX okunabilirlik + iki format bug'ı
+
+Cihaz testi sonrası kullanıcı geri bildirimi: ekranlarda kim alıcı kim satıcı belli olmuyor,
+Onaylar'da hangi rolde olduğun ve paranın yönü okunmuyor, seed'de kişi adı = dükkan adı.
+
+**İSİM AYRIMI — kod suçsuzdu, sorun seed'deydi.** `User` zaten `displayName` (kişi) +
+`sellerInfo.shopName` (dükkan) ayırıyor ve HER ekran doğru alanı çekiyordu; seed'de
+`u_owner` için ikisi de "Ahmet Bakkal" olduğu için yanlış alanı gösteren bir ekran fark
+edilemezdi. Seed ayrıştırıldı (kişi "Ahmet Demirtaş" / dükkan "Ahmet Bakkal", "Ayşe Korkmaz" /
+"Ayşe Market"), `o1` müşteri kaydı kişi adına çevrildi. **Üretim kodu değişmedi.**
+
+**İKİ FORMAT BUG'I (ekran görüntüsünde görünüyordu):**
+- `toTlString()` negatifte çift eksi basıyordu (`-756.228,-50 TL`). Kotlin'de `/` ve `%` sıfıra
+  doğru kırptığı için kalan negatif oluyor. İşaret baştan ayrılıp `abs` üzerinden formatlandı.
+  Fazla ödemede bakiye negatife düştüğü için ULAŞILABİLİR bir yol. **İki app'te de** düzeltildi
+  (MoneyFormat gerçek kopya).
+- `Locale("tr","TR")` deprecated → `Locale.forLanguageTag("tr-TR")` (derleme uyarısı gitti).
+
+**RENK SİSTEMİ — dört ton (kullanıcı kararı):** yön = **cep testi** (değer bana geliyorsa
+yeşil, çıkıyorsa kırmızı); yoğunluk = **veresiye soluk** (defter kaydı, para hareket etmedi) /
+**ödeme doygun** (gerçek para). `colors.xml`e error/accent'in 8 alfa varyantı (yeni renk tonu
+YOK), `styles.xml`e `Widget.Appmobile.DirectionCard` + `.Debt`/`.Credit`.
+
+> Kullanıcının ilk ifadesi ("satıcı olarak veresiye yazıyorsam kırmızı") cep testiyle
+> çelişiyordu — soruldu, cep testi seçildi: satıcı için veresiye yazmak alacağın artması.
+
+**Ekran rol rengi:** Borçlarım/Müşterilerim'in üst toplam bloğu MaterialCardView'a alındı
+(kırmızı/yeşil kenarlık + hafif tint). ViewBinding id'leri korunduğu için **Fragment'larda
+sıfır Kotlin değişikliği**.
+
+**ONAYLAR YENİDEN YAZILDI — monorepo'nun İLK çok-tipli adapter'ı:**
+- Yeni `ApprovalListItem` sealed (Header/Card) + `ApprovalTone` enum (4 ton).
+- `ApprovalsViewModel` → `StateFlow<List<ApprovalListItem>>`: `partition { sellerId == userId }`
+  ile iki bölüm, ton + karşı taraf telefonu VM'de çözülür (adapter saf renderer).
+- `ApprovalAdapter` → `getItemViewType` + iki VH. ConcatAdapter ELENDİ: iki bölüm için 4
+  adapter + fragment'ta imperatif boş-bölüm mantığı gerekirdi; sealed'da tek `submitList`,
+  DiffUtil header'ları da yönetir.
+- Kart telefonu: **şema değişmeden** VM lookup (`findCustomerById` / yeni `shopPhoneOf`).
+
+**Dükkan telefonu (satıcı detayı):** `Repository.shopPhoneOf` eklendi (yeni nav arg DEĞİL —
+`CustomerDetailViewModel.phone` deseni: suspend lookup → StateFlow). Adım 6 ve 9 aynı metodu
+paylaşıyor.
+
+**Öğrenilenler:**
+- **Seed'de iki alan aynıysa hangi alanın gösterildiği test edilemez.** Demo verisini bilinçli
+  ayrıştırmak, yanlış-alan bug'ını görünür kılar. Kod düzeltmesi gerekmedi — teşhis seed'di.
+- **Geri dönüştürülen view'da renk her dalda set edilmeli.** Enum üzerinde exhaustive `when`
+  bunu derleyiciye zorlattırıyor; `if/else` olsaydı eksik dal sessiz bug olurdu.
+- **`%02d` negatif sayıda işareti tekrarlar.** Para formatlamada işaret her zaman baştan
+  ayrılmalı.
+- **VM'de `R.string` id'si (Int) tutmak Context sızıntısı değil** — fragment çözer; başlığı
+  veri olarak taşımak boş bölümün kendiliğinden kaybolmasını sağlıyor.
+
+**Doğrulama:** app-mobile üç modül ✓ (`:app:assembleDebug` dahil), app-pos ✓, **uyarısız**.
+**Cihaz testi:** `adb shell pm clear com.example.app_mobile` ŞART (yeni seed isimleri için) →
+`mobilebuild`. Test listesi `docs/test-hesaplari.md` → "Renk ve okunabilirlik (Tur 25)"
+bölümünde; dört tonun tamamını üreten senaryolar orada.
+
+**Bilinen, bu turda çözülmeyen:** detay ekranı başlıkları donmuş nav arg'dan geliyor — dükkan
+adı ekran açıkken değişirse başlık tazelenmiyor (FAZ 4'te reaktif hale gelebilir).
+
+**Sıradaki:** FAZ 4 — `:core-network` (Retrofit + DTO + AuthInterceptor) + outbox/WorkManager.
+
+### 2026-08-05 — Tur 25b: Onay renk kuralı revize + bölüm başlığı kutulandı
+
+**Renk kuralı değişti (kullanıcı geri bildirimi):** Tur 25'te ton yalnızca ROLE bakıyordu
+(satıcı hep yeşil, müşteri hep kırmızı). Kullanıcı işlem türünün de rengi belirlemesini istedi:
+
+| Rolüm | İşlem | Eski | YENİ |
+|---|---|---|---|
+| Satıcı | veresiye veriyorum | soluk yeşil | **soluk kırmızı** |
+| Satıcı | ödeme alıyorum | doygun yeşil | canlı yeşil (aynı) |
+| Müşteri | veresiye alıyorum | soluk kırmızı | **soluk yeşil** |
+| Müşteri | ödeme yapıyorum | doygun kırmızı | canlı kırmızı (aynı) |
+
+Yeni kural: **veresiyede hareket eden mal/kredi** (satıcı verir → out, müşteri alır → in),
+**ödemede hareket eden para** (satıcıya gelir → in, müşteriden çıkar → out). Yoğunluk aynı
+kaldı (veresiye soluk = henüz nakit yok, ödeme doygun = gerçek para). Değişiklik tek `when`
+bloğunda (`ApprovalsViewModel.toCard`) + KDoc'lar; renk kaynakları ve enum dokunulmadı.
+
+**Bölüm başlıkları kutulandı:** düz metin arka planda kayboluyordu →
+`item_approval_header.xml` artık `bg_section_label` (surface_elevated + outline stroke,
+8dp radius) üzerinde pill etiket.
+
+**Doğrulama:** `:app:assembleDebug` ✓ uyarısız. `docs/test-hesaplari.md` renk tablosu +
+"dört tonu üretme" adımları güncellendi (her ton ONAYLAYANIN ekranında görünür — başlatan
+kendi rengini görmez).

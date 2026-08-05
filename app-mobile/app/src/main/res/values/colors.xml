@@ -27,6 +27,25 @@
     <color name="balance_clear">@color/on_surface_variant</color>
     <color name="payment_received">@color/accent</color>
 
+    <!--
+      Direction accents: a soft fill + hairline stroke that say which way value moves
+      for the signed-in user. Red = it leaves me, green = it comes to me — the same
+      convention the balances above already use.
+
+      Intensity says whether cash actually moved: a booked veresiye is only a ledger
+      entry (faint), a payment is real money changing hands (strong). Alpha variants
+      of error/accent, so the palette gains no new hues.
+    -->
+    <color name="debt_container_faint">#14FF5C5C</color>
+    <color name="debt_stroke_faint">#3DFF5C5C</color>
+    <color name="debt_container">#26FF5C5C</color>
+    <color name="debt_stroke">#66FF5C5C</color>
+
+    <color name="credit_container_faint">#1400C896</color>
+    <color name="credit_stroke_faint">#3D00C896</color>
+    <color name="credit_container">#2600C896</color>
+    <color name="credit_stroke">#6600C896</color>
+
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 

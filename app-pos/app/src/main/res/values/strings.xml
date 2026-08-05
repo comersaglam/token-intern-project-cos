@@ -34,7 +34,12 @@
     <string name="phone_number_hint">Telefon numarası</string>
     <string name="msg_phone_required">Telefon numarası gerekli</string>
     <string name="msg_phone_invalid">Geçerli bir numara girin (0555 444 3322)</string>
-    <string name="msg_phone_exists">Bu numara zaten kayıtlı</string>
+    <string name="msg_phone_exists">Bu müşteri zaten defterinizde — listeden seçin</string>
+
+    <!-- Phone belongs to someone another shop already knows: reuse that record -->
+    <string name="known_customer_title">Kayıtlı müşteri</string>
+    <string name="known_customer_message">Bu numara sistemde \"%1$s\" adına kayıtlı. Müşteri defterinize eklenecek ve işlem bu kişiye yazılacak.</string>
+    <string name="known_customer_continue">Devam et</string>
 
     <!-- Confirm screen (sale flow) -->
     <string name="confirm_title">Onay</string>

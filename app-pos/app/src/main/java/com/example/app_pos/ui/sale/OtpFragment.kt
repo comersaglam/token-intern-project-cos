@@ -14,7 +14,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.navGraphViewModels
 import com.example.app_pos.MainActivity
 import com.example.app_pos.R
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.databinding.FragmentOtpBinding
 import com.example.app_pos.model.ClaimStatus
 import com.example.app_pos.model.TransactionType
@@ -34,18 +34,11 @@ class OtpFragment : Fragment() {
 
     private val saleViewModel: SaleViewModel by navGraphViewModels(R.id.saleFlow)
     private val viewModel: OtpViewModel by viewModels()
+    private val repo = RepositoryProvider.instance
 
-    // Whether the customer has the app: routes app-push vs SMS (both mocked). A
-    // new customer has no app; an existing one is looked up by phone.
-    private val hasApp: Boolean
-        get() {
-            val sel = saleViewModel.selectedCustomer.value ?: return false
-            if (sel.isNew) return false
-            // Only claimStatus matters here (app vs SMS), which is seller-independent;
-            // the seller scope just satisfies the balance-aware lookup signature.
-            val sellerId = FakeRepository.currentSellerId() ?: return false
-            return FakeRepository.findCustomerByPhone(sellerId, sel.phone)?.claimStatus == ClaimStatus.CLAIMED
-        }
+    // Whether the customer has the app: routes app-push vs SMS (both mocked). Resolved
+    // once (the lookup is a suspend DB read now) and cached; a new customer has no app.
+    private var hasApp: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -63,8 +56,23 @@ class OtpFragment : Fragment() {
         binding.otpPrompt.text = getString(R.string.otp_prompt, phone)
         binding.btnVerify.setOnClickListener { onVerify() }
         observeStatus()
-        // Kick off the request once (the ViewModel survives config changes).
-        if (savedInstanceState == null) viewModel.sendOtp(phone, hasApp)
+        // Resolve hasApp (a suspend lookup) first, then kick off the request once.
+        if (savedInstanceState == null) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                hasApp = resolveHasApp()
+                viewModel.sendOtp(phone, hasApp)
+            }
+        }
+    }
+
+    /** Whether the selected customer is CLAIMED (has the app). New customers do not. */
+    private suspend fun resolveHasApp(): Boolean {
+        val sel = saleViewModel.selectedCustomer.value ?: return false
+        if (sel.isNew) return false
+        // Only claimStatus matters here (app vs SMS), seller-independent; the seller
+        // scope just satisfies the balance-aware lookup signature.
+        val sellerId = repo.currentSellerId() ?: return false
+        return repo.findCustomerByPhone(sellerId, sel.phone)?.claimStatus == ClaimStatus.CLAIMED
     }
 
     private fun observeStatus() {
@@ -114,6 +122,9 @@ class OtpFragment : Fragment() {
             knownCustomerId = sel.customerId,
             amountMinor = amount,
             type = type,
+            // The basket handed over by the PGW, if any (DEBT from mock-pos). When set,
+            // its items are persisted with the entry; a PAYMENT / money-only DEBT is null.
+            orderBody = saleViewModel.orderBody,
         ) { onWritten(sel.displayName, amount, type) }
     }
 

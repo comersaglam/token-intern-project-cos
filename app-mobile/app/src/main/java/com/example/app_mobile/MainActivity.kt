@@ -7,7 +7,7 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
-import com.example.app_mobile.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_mobile.databinding.ActivityMainBinding
 import com.example.app_mobile.ui.dashboard.DashboardFragment
 
@@ -24,6 +24,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var appBarConfiguration: AppBarConfiguration
 
+    private val repo = RepositoryProvider.instance
+
     private val navController: NavController
         get() = (supportFragmentManager
             .findFragmentById(R.id.navHostFragment) as NavHostFragment).navController
@@ -39,7 +41,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             val graph = navController.navInflater.inflate(R.navigation.nav_graph)
             graph.setStartDestination(
-                if (FakeRepository.isSessionValid()) R.id.dashboardFragment else R.id.loginFragment
+                if (repo.isSessionValid()) R.id.dashboardFragment else R.id.loginFragment
             )
             navController.graph = graph
         }

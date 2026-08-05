@@ -2,7 +2,7 @@ package com.example.app_mobile.ui.sellerdetail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_mobile.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -29,11 +30,22 @@ enum class TransactionFilter { ALL, DEBT, PAYMENT }
 @OptIn(ExperimentalCoroutinesApi::class)
 class SellerDetailViewModel(private val sellerId: String) : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
+
     private val allTransactions =
-        FakeRepository.observeCurrentUser().flatMapLatest { user ->
+        repo.observeCurrentUser().flatMapLatest { user ->
             if (user == null) flowOf(emptyList())
-            else FakeRepository.observeMyTransactions(user.userId, sellerId)
+            else repo.observeMyTransactions(user.userId, sellerId)
         }
+
+    /**
+     * The shop's phone for the header — how the buyer reaches them. Empty when the
+     * seller has not set one, so the row can hide. Mirrors CustomerDetailViewModel's
+     * phone, simpler because sellerId is a constructor argument.
+     */
+    val shopPhone: StateFlow<String> =
+        flow { emit(repo.shopPhoneOf(sellerId).orEmpty()) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     private val filter = MutableStateFlow(TransactionFilter.ALL)
 
@@ -64,12 +76,17 @@ class SellerDetailViewModel(private val sellerId: String) : ViewModel() {
      * The buyer pays this seller. Goes through the approval gate (the seller confirms
      * receipt); suspend, so it runs in viewModelScope. The balance updates live once
      * the entry is written (immediately for an app-less seller, on approval otherwise).
+     *
+     * [onResult] reports whether the request actually went out, so the screen only
+     * claims success when something was sent.
      */
-    fun pay(amountMinor: Long) {
-        if (amountMinor <= 0) return
-        val userId = FakeRepository.currentUserId() ?: return
+    fun pay(amountMinor: Long, onResult: (Boolean) -> Unit) {
+        if (amountMinor <= 0) return onResult(false)
+        val userId = repo.currentUserId() ?: return onResult(false)
         viewModelScope.launch {
-            FakeRepository.initiatePayment(userId, sellerId, amountMinor)
+            // false = no shared record with this seller, so nothing was sent; the screen
+            // reports that rather than claiming success.
+            onResult(repo.initiatePayment(userId, sellerId, amountMinor))
         }
     }
 }

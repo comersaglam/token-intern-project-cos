@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -74,7 +75,14 @@ class MainActivity : AppCompatActivity() {
         btnCard.setOnClickListener { onMockMethod(getString(R.string.method_card)) }
         btnMealCard.setOnClickListener { onMockMethod(getString(R.string.method_meal_card)) }
         btnCash.setOnClickListener { onMockMethod(getString(R.string.method_cash)) }
+        // Default (tap): money-only handoff from the keyed-in amount.
         btnCredit.setOnClickListener { onCreditSelected() }
+        // Optional (long-press): pick a canned item-level basket, so the
+        // product-based path can be demoed without a real basket app.
+        btnCredit.setOnLongClickListener {
+            showBasketPicker()
+            true
+        }
     }
 
     private fun observeAmount() {
@@ -92,9 +100,29 @@ class MainActivity : AppCompatActivity() {
         toast(getString(R.string.msg_method_mocked, methodName))
     }
 
-    /** VERESİYE is the one method that leaves this app: hand off to app-pos. */
+    /**
+     * VERESİYE is the one method that leaves this app: hand off to app-pos. The
+     * default is a MONEY-ONLY basket built from the keyed-in amount, matching the
+     * previous single-amount handoff — the item data just travels in the orderBody
+     * shape now so app-pos can support product-level credit later.
+     */
     private fun onCreditSelected() {
         if (!requireAmount()) return
+        handOff(MockBasket.moneyOnly(viewModel.amountMinor.value))
+    }
+
+    /** Lets the merchant send a canned item-level basket instead of a plain amount. */
+    private fun showBasketPicker() {
+        val samples = MockBasket.SAMPLES
+        val labels = samples.map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.basket_picker_title)
+            .setItems(labels) { _, which -> handOff(MockBasket.fromSample(samples[which])) }
+            .show()
+    }
+
+    /** Sends the orderBody JSON to app-pos over the CREDIT intent. */
+    private fun handOff(orderBody: String) {
         val intent = Intent(ACTION_CREDIT).apply {
             // Same-device app; targeting the package keeps the handoff explicit.
             setPackage(APP_POS_PACKAGE)
@@ -102,7 +130,7 @@ class MainActivity : AppCompatActivity() {
             // live inside this app's back stack — it is the real POS payment app's
             // stand-in and must not own the veresiye app's lifecycle.
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(EXTRA_AMOUNT_MINOR, viewModel.amountMinor.value)
+            putExtra(EXTRA_ORDER_BODY, orderBody)
         }
         try {
             startActivity(intent)
@@ -128,8 +156,11 @@ class MainActivity : AppCompatActivity() {
         // and reads the same extra key. The two apps do not share code, so these
         // constants are duplicated on the app-pos side; they could move to
         // shared-contracts later.
+        //
+        // The extra is now the PGW's orderBody JSON (basketID + items), not a bare
+        // amount — this mirrors the real Token payment gateway payload.
         private const val APP_POS_PACKAGE = "com.example.app_pos"
         private const val ACTION_CREDIT = "com.example.app_pos.action.CREDIT"
-        private const val EXTRA_AMOUNT_MINOR = "amount_minor"
+        private const val EXTRA_ORDER_BODY = "orderBody"
     }
 }

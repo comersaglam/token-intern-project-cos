@@ -63,8 +63,23 @@ class SellerDetailFragment : Fragment() {
 
         setupFilters()
         binding.btnPay.setOnClickListener { showPayDialog() }
+        observeShopPhone()
         observeBalance()
         observeTransactions()
+    }
+
+    private fun observeShopPhone() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.shopPhone.collect { phone ->
+                    binding.detailShopPhone.text = phone
+                    // A shop may not have set a number; hide the row rather than
+                    // leaving an empty line under the name.
+                    binding.detailShopPhone.visibility =
+                        if (phone.isBlank()) View.GONE else View.VISIBLE
+                }
+            }
+        }
     }
 
     private fun setupFilters() {
@@ -91,8 +106,13 @@ class SellerDetailFragment : Fragment() {
                 val lira = input.text.toString().replace(',', '.').toDoubleOrNull() ?: return@setPositiveButton
                 val amountMinor = (lira * 100).roundToLong()
                 if (amountMinor > 0) {
-                    viewModel.pay(amountMinor)
-                    Toast.makeText(requireContext(), R.string.pay_done, Toast.LENGTH_SHORT).show()
+                    // Only report success once the request actually went out. The callback
+                    // arrives from viewModelScope, so guard against the view being gone.
+                    viewModel.pay(amountMinor) { sent ->
+                        val ctx = context ?: return@pay
+                        val msg = if (sent) R.string.pay_done else R.string.pay_no_record
+                        Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             .setNegativeButton(R.string.pay_dialog_negative, null)

@@ -1,6 +1,7 @@
 package com.example.app_pos.ui.sale
 
 import androidx.lifecycle.ViewModel
+import com.example.app_pos.model.OrderBody
 import com.example.app_pos.model.TransactionType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,20 @@ class SaleViewModel : ViewModel() {
     /** Loads the amount handed over by the payment app (Intent extra, kuruş). */
     fun setAmount(minor: Long) {
         _amountMinor.value = minor
+    }
+
+    /**
+     * The basket handed over by the PGW (mock-pos), if this sale came from a
+     * payment-app handoff. Null for a PAYMENT keyed in on the in-app keypad. Held
+     * so the write step can persist the basket + its items later (phase 3); the
+     * money-only default carries a single synthetic item, so this stays optional.
+     */
+    var orderBody: OrderBody? = null
+        private set
+
+    /** Records the PGW basket for this sale (set on a CREDIT handoff). */
+    fun setOrderBody(body: OrderBody?) {
+        orderBody = body
     }
 
     // --- Keypad, for the in-app PAYMENT flow (mirrors mock-pos PaymentViewModel).

@@ -1,0 +1,137 @@
+package com.example.app_pos.data.db
+
+import com.example.app_pos.data.db.dao.SellerDebtRow
+import com.example.app_pos.data.db.entity.ApprovalEntity
+import com.example.app_pos.data.db.entity.CustomerEntity
+import com.example.app_pos.data.db.entity.TransactionEntity
+import com.example.app_pos.data.db.entity.UserEntity
+import com.example.app_pos.model.ClaimStatus
+import com.example.app_pos.model.Customer
+import com.example.app_pos.model.PendingApproval
+import com.example.app_pos.model.SellerDebt
+import com.example.app_pos.model.SellerInfo
+import com.example.app_pos.model.Transaction
+import com.example.app_pos.model.TransactionType
+import com.example.app_pos.model.User
+
+/**
+ * Entity <-> domain mappers. The storage shape (Room entity) and the domain model
+ * change for different reasons, so they are separate types with explicit conversion
+ * here (docs/db-schema.md "üç temsil"). Enums cross as their names (strings on disk).
+ */
+
+// --- User ---
+
+fun UserEntity.toDomain(): User = User(
+    userId = userId,
+    phone = phone,
+    displayName = displayName,
+    isBuyer = isBuyer,
+    isSeller = isSeller,
+    email = email,
+    // Rebuild the nested SellerInfo the domain uses from the flattened shop_* columns.
+    sellerInfo = if (isSeller && shopName != null) SellerInfo(shopName, shopPhone) else null,
+    createdAt = createdAt
+)
+
+fun User.toEntity(): UserEntity = UserEntity(
+    userId = userId,
+    phone = phone,
+    displayName = displayName,
+    isBuyer = isBuyer,
+    isSeller = isSeller,
+    email = email,
+    shopName = sellerInfo?.shopName,
+    shopPhone = sellerInfo?.shopPhone,
+    createdAt = createdAt
+)
+
+// --- Customer (balance is passed in; it is always derived from the ledger) ---
+
+fun CustomerEntity.toDomain(balanceMinor: Long): Customer = Customer(
+    customerId = customerId,
+    displayName = displayName,
+    phone = phone,
+    claimStatus = ClaimStatus.valueOf(claimStatus),
+    claimedByUserId = claimedByUserId,
+    balanceMinor = balanceMinor
+)
+
+fun CustomerEntity.toRawDomain(): Customer = toDomain(0L)
+
+// --- Transaction ---
+
+fun TransactionEntity.toDomain(): Transaction = Transaction(
+    transactionId = transactionId,
+    sellerId = sellerId,
+    customerId = customerId,
+    amountMinor = amountMinor,
+    type = TransactionType.valueOf(type),
+    description = description,
+    createdAt = createdAt
+)
+
+// app-mobile has no PGW handoff, so an entry never carries a basket (basketId = null).
+fun Transaction.toEntity(): TransactionEntity = TransactionEntity(
+    transactionId = transactionId,
+    sellerId = sellerId,
+    customerId = customerId,
+    amountMinor = amountMinor,
+    type = type.name,
+    description = description,
+    basketId = null,
+    settledViaPgw = false,
+    receiptNo = null,
+    createdAt = createdAt
+)
+
+// --- Approval ---
+
+fun ApprovalEntity.toDomain(): PendingApproval = PendingApproval(
+    approvalId = approvalId,
+    sellerId = sellerId,
+    counterpartyName = shopName,
+    // targetUserId IS the approver — the counterparty of whoever started the request.
+    approverUserId = targetUserId,
+    customerId = customerId,
+    amountMinor = amountMinor,
+    type = TransactionType.valueOf(type),
+    description = description.orEmpty(),
+    requestedAt = requestedAt
+)
+
+/**
+ * Domain → entity, filling the three-line direction fields.
+ *
+ * [initiatorUserId] decides the direction: matching the sellerId means the shop started
+ * it (they need the customer's approval), otherwise a buyer did (the shop confirms
+ * receipt). A row only exists for a CLAIMED counterparty — the app-less case writes to
+ * the ledger instead — so the channel is always app-push here.
+ */
+fun PendingApproval.toEntity(
+    initiatorUserId: String,
+    status: String = "PENDING"
+): ApprovalEntity = ApprovalEntity(
+    approvalId = approvalId,
+    initiatorUserId = initiatorUserId,
+    initiatorRole = if (initiatorUserId == sellerId) "SELLER" else "BUYER",
+    targetUserId = approverUserId,
+    sellerId = sellerId,
+    shopName = counterpartyName,
+    customerId = customerId,
+    amountMinor = amountMinor,
+    type = type.name,
+    description = description,
+    channel = "APP_PUSH",
+    status = status,
+    requestedAt = requestedAt
+)
+
+// --- SellerDebt (the buyer's debt list: a GROUP BY + JOIN projection) ---
+
+fun SellerDebtRow.toDomain(): SellerDebt = SellerDebt(
+    sellerId = sellerId,
+    // A seller who has not named their shop is shown by id, as the fake did.
+    shopName = shopName ?: sellerId,
+    balanceMinor = balanceMinor
+)

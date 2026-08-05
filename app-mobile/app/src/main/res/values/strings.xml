@@ -37,6 +37,7 @@
     <string name="pay_dialog_positive">Öde</string>
     <string name="pay_dialog_negative">Vazgeç</string>
     <string name="pay_done">Ödeme alındı</string>
+    <string name="pay_no_record">Bu dükkanla kaydınız yok, ödeme gönderilemedi</string>
 
     <!-- Approvals -->
     <string name="approvals_empty">Bekleyen onayınız yok.</string>
@@ -46,6 +47,9 @@
     <string name="approval_reject">Reddet</string>
     <string name="approval_approved">Onaylandı</string>
     <string name="approval_rejected">Reddedildi</string>
+    <!-- The list is grouped by which role the request reaches you in -->
+    <string name="approvals_section_as_seller">Satıcı olarak onaylarınız</string>
+    <string name="approvals_section_as_buyer">Müşteri olarak onaylarınız</string>
 
     <!-- Seller: reports placeholder tab -->
     <string name="nav_reports">Detaylı Bilgiler</string>
@@ -60,6 +64,19 @@
     <string name="no_customer_found">Müşteri bulunamadı</string>
     <string name="status_claimed">Uygulaması var</string>
     <string name="status_unclaimed">Uygulaması yok</string>
+
+    <!-- Seller: add a customer to the book -->
+    <string name="add_customer_title">Yeni müşteri</string>
+    <string name="add_customer_name_hint">Müşteri adı</string>
+    <string name="add_customer_phone_hint">Telefon numarası</string>
+    <string name="add_customer_positive">Ekle</string>
+    <string name="msg_name_required">Müşteri adı gerekli</string>
+    <string name="msg_phone_invalid">Geçerli bir numara girin (0555 444 3322)</string>
+    <string name="msg_phone_exists">Bu müşteri zaten defterinizde — listeden seçin</string>
+    <!-- Phone belongs to someone another shop already knows: reuse that record -->
+    <string name="known_customer_title">Kayıtlı müşteri</string>
+    <string name="known_customer_message">Bu numara sistemde \"%1$s\" adına kayıtlı. Müşteri defterinize eklenecek ve işlem bu kişiye yazılacak.</string>
+    <string name="known_customer_continue">Devam et</string>
 
     <!-- Seller: customer detail + write actions -->
     <string name="customer_detail_title">Müşteri</string>

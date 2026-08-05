@@ -11,8 +11,16 @@ import java.util.Locale
  * Copied from app-pos (separate APKs cannot share a module — same reason the
  * :core-domain models are copied).
  */
+private val TR = Locale.forLanguageTag("tr-TR")
+
+/**
+ * The sign is taken off the whole value before splitting: Kotlin's / and % both
+ * truncate toward zero, so a negative remainder would print the minus twice
+ * (-75622850 would render as "-756.228,-50 TL"). Balances go negative when a
+ * customer overpays, so this is reachable.
+ */
 fun Long.toTlString(): String {
-    val lira = this / 100
-    val kurus = this % 100
-    return String.format(Locale("tr", "TR"), "%,d,%02d TL", lira, kurus)
+    val sign = if (this < 0) "-" else ""
+    val abs = kotlin.math.abs(this)
+    return String.format(TR, "%s%,d,%02d TL", sign, abs / 100, abs % 100)
 }

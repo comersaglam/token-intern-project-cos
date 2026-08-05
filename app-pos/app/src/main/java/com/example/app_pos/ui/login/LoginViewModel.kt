@@ -2,7 +2,7 @@ package com.example.app_pos.ui.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.util.PhoneFormat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +26,7 @@ enum class LoginState { IDLE, SUBMITTING, SUCCESS, ERROR, NEEDS_REGISTER }
  */
 class LoginViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
     private val _state = MutableStateFlow(LoginState.IDLE)
     val state: StateFlow<LoginState> = _state.asStateFlow()
 
@@ -49,10 +50,10 @@ class LoginViewModel : ViewModel() {
         }
         _state.value = LoginState.SUBMITTING
         viewModelScope.launch {
-            if (FakeRepository.findUserByPhone(stored) != null) {
+            if (repo.findUserByPhone(stored) != null) {
                 // Only SUCCESS if the session was actually opened (guards against a
                 // login that silently fails while the number looks registered).
-                _state.value = if (FakeRepository.login(stored)) LoginState.SUCCESS else LoginState.ERROR
+                _state.value = if (repo.login(stored)) LoginState.SUCCESS else LoginState.ERROR
             } else {
                 pendingPhone = stored
                 _state.value = LoginState.NEEDS_REGISTER
@@ -66,8 +67,8 @@ class LoginViewModel : ViewModel() {
         _state.value = LoginState.SUBMITTING
         viewModelScope.launch {
             // app-pos registers a seller; the name is blank and filled in from profile.
-            FakeRepository.registerUser(phone, displayName = "", isSeller = true)
-            FakeRepository.login(phone)
+            repo.registerUser(phone, displayName = "", isSeller = true)
+            repo.login(phone)
             pendingPhone = null
             _state.value = LoginState.SUCCESS
         }

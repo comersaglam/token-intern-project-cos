@@ -12,13 +12,14 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.app_mobile.R
-import com.example.app_mobile.data.PendingApproval
+import com.example.app_pos.model.PendingApproval
 import com.example.app_mobile.databinding.FragmentApprovalsBinding
 import kotlinx.coroutines.launch
 
 /**
- * Onaylar — pending veresiye/payment requests waiting on the buyer, each an
- * Approve/Reject card (no OTP code: the app-holding customer approves in-app).
+ * Onaylar — pending veresiye/payment requests waiting on ME, in either role: grouped
+ * into "as a seller" and "as a customer" sections, each row an Approve/Reject card
+ * (no OTP code: an app-holding counterparty approves in-app).
  */
 class ApprovalsFragment : Fragment() {
 
@@ -44,9 +45,11 @@ class ApprovalsFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.approvals.collect { approvals ->
-                    adapter.submitList(approvals)
-                    binding.emptyView.visibility = if (approvals.isEmpty()) View.VISIBLE else View.GONE
+                viewModel.items.collect { items ->
+                    adapter.submitList(items)
+                    // Headers only exist for non-empty sections, so an empty list still
+                    // means "nothing pending".
+                    binding.emptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
                 }
             }
         }

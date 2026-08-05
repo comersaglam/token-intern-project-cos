@@ -5,13 +5,18 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.navigation.navGraphViewModels
 import com.example.app_pos.R
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.databinding.FragmentPhoneBinding
+import com.example.app_pos.model.Customer
+import com.example.app_pos.model.CustomerLookup
 import com.example.app_pos.util.PhoneFormat
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.launch
 
 /**
  * New-customer step: capture name + phone, then continue to confirm.
@@ -28,6 +33,7 @@ class PhoneFragment : Fragment() {
 
     private val args: PhoneFragmentArgs by navArgs()
     private val saleViewModel: SaleViewModel by navGraphViewModels(R.id.saleFlow)
+    private val repo = RepositoryProvider.instance
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -66,22 +72,62 @@ class PhoneFragment : Fragment() {
             binding.phoneLayout.error = getString(R.string.msg_phone_invalid)
             return
         }
-        // Compare in the same canonical form so 0555… and +90555… match.
-        if (FakeRepository.customerPhoneExists(phone)) {
-            binding.phoneLayout.error = getString(R.string.msg_phone_exists)
-            return
-        }
-        binding.phoneLayout.error = null
 
-        // Not created yet — the write happens after OTP. customerId is empty; the
-        // record is created (addCustomer) at write time. isNew = true. Phone is
-        // stored canonical (+90…).
-        saleViewModel.onCustomerSelected(
-            customerId = "",
-            displayName = name,
-            phone = phone,
-            isNew = true
-        )
+        // What this number means to THIS seller decides the next step. A person known
+        // to another shop is not a duplicate — ownership lives in the ledger, so they
+        // are reused here rather than rejected. DB read (suspend) → coroutine.
+        viewLifecycleOwner.lifecycleScope.launch {
+            val sellerId = repo.currentSellerId() ?: return@launch
+            when (val lookup = repo.lookupCustomerForSeller(sellerId, phone)) {
+                // Already in this seller's own book: a second record would split the
+                // history, so send them back to pick the existing one.
+                is CustomerLookup.AlreadyMine -> {
+                    binding.phoneLayout.error = getString(R.string.msg_phone_exists)
+                }
+                // Known to another shop: confirm, then reuse that record.
+                is CustomerLookup.KnownToOtherSeller -> {
+                    binding.phoneLayout.error = null
+                    confirmKnownCustomer(lookup.existing)
+                }
+                // Brand new: created at write time (addCustomer), after OTP.
+                CustomerLookup.New -> {
+                    binding.phoneLayout.error = null
+                    selectAndContinue(customerId = "", displayName = name, phone = phone, isNew = true)
+                }
+            }
+        }
+    }
+
+    /**
+     * Asks before adopting a record another shop created. The stored name is used (not
+     * what was typed): it is the same person, and the merchant sees who that is before
+     * the entry is booked.
+     */
+    private fun confirmKnownCustomer(existing: Customer) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.known_customer_title)
+            .setMessage(getString(R.string.known_customer_message, existing.displayName))
+            .setNegativeButton(R.string.cancel_dialog_dismiss, null)
+            .setPositiveButton(R.string.known_customer_continue) { _, _ ->
+                // isNew = false: the record exists, so the write only appends a ledger
+                // entry for this seller — which is what puts them in this book.
+                selectAndContinue(
+                    customerId = existing.customerId,
+                    displayName = existing.displayName,
+                    phone = existing.phone.orEmpty(),
+                    isNew = false
+                )
+            }
+            .show()
+    }
+
+    private fun selectAndContinue(
+        customerId: String,
+        displayName: String,
+        phone: String,
+        isNew: Boolean
+    ) {
+        saleViewModel.onCustomerSelected(customerId, displayName, phone, isNew)
         findNavController().navigate(R.id.action_phone_to_confirm)
     }
 

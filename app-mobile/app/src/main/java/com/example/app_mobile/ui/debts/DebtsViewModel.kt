@@ -2,8 +2,8 @@ package com.example.app_mobile.ui.debts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_mobile.data.FakeRepository
-import com.example.app_mobile.data.SellerDebt
+import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.SellerDebt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,13 +21,15 @@ import kotlinx.coroutines.flow.stateIn
 @OptIn(ExperimentalCoroutinesApi::class)
 class DebtsViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
+
     val debts: StateFlow<List<SellerDebt>> =
-        FakeRepository.observeCurrentUser().flatMapLatest { user ->
-            if (user == null) flowOf(emptyList()) else FakeRepository.observeMyDebtsBySeller(user.userId)
+        repo.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(emptyList()) else repo.observeMyDebtsBySeller(user.userId)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalDebtMinor: StateFlow<Long> =
-        FakeRepository.observeCurrentUser().flatMapLatest { user ->
-            if (user == null) flowOf(0L) else FakeRepository.observeMyTotalDebtMinor(user.userId)
+        repo.observeCurrentUser().flatMapLatest { user ->
+            if (user == null) flowOf(0L) else repo.observeMyTotalDebtMinor(user.userId)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 }

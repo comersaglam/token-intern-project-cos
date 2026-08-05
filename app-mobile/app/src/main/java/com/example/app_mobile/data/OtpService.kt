@@ -12,7 +12,7 @@ import kotlinx.coroutines.delay
  *
  * NOTE: app-mobile's *approval* of a merchant's pending veresiye/payment does NOT
  * go through an OTP code (that is the app-holding customer's push case — handled
- * as an in-app Approve/Reject card, see FakeRepository.approvePending). OTP here
+ * as an in-app Approve/Reject card, see Repository.approvePending). OTP here
  * is only the sign-in factor.
  */
 object OtpService {

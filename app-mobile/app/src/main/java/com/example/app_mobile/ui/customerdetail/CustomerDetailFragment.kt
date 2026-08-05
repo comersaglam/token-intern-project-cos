@@ -17,7 +17,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.app_mobile.R
-import com.example.app_mobile.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_mobile.databinding.FragmentCustomerDetailBinding
 import com.example.app_mobile.ui.sellerdetail.TransactionAdapter
 import com.example.app_pos.model.ClaimStatus
@@ -50,12 +50,6 @@ class CustomerDetailFragment : Fragment() {
 
     private val adapter = TransactionAdapter()
 
-    // The customer, read once: phone for the header, claim status for the write feedback.
-    private val customer by lazy {
-        val sellerId = FakeRepository.currentUserId()
-        if (sellerId == null) null else FakeRepository.findCustomerById(sellerId, args.customerId)
-    }
-
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -68,7 +62,6 @@ class CustomerDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.detailName.text = args.customerName
-        binding.detailPhone.text = customer?.phone.orEmpty()
 
         binding.transactionList.layoutManager = LinearLayoutManager(requireContext())
         binding.transactionList.adapter = adapter
@@ -76,6 +69,7 @@ class CustomerDetailFragment : Fragment() {
         setupFilters()
         binding.btnDebt.setOnClickListener { showAmountDialog(TransactionType.DEBT) }
         binding.btnPay.setOnClickListener { showAmountDialog(TransactionType.PAYMENT) }
+        observePhone()
         observeBalance()
         observeTransactions()
     }
@@ -110,12 +104,20 @@ class CustomerDetailFragment : Fragment() {
                 viewModel.submit(type, amountMinor, description)
                 // Feedback matches the approval routing: app customer waits for approval,
                 // app-less customer is written immediately.
-                val msg = if (customer?.claimStatus == ClaimStatus.CLAIMED)
+                val msg = if (viewModel.isClaimed.value)
                     R.string.detail_approval_sent else R.string.detail_written
                 Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(R.string.pay_dialog_negative, null)
             .show()
+    }
+
+    private fun observePhone() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.phone.collect { binding.detailPhone.text = it }
+            }
+        }
     }
 
     private fun observeBalance() {

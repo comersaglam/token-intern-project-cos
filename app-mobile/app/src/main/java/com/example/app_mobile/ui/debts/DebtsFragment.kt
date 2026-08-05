@@ -11,7 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.app_mobile.data.SellerDebt
+import com.example.app_pos.model.SellerDebt
 import com.example.app_mobile.databinding.FragmentDebtsBinding
 import com.example.app_mobile.util.toTlString
 import kotlinx.coroutines.launch

@@ -14,7 +14,7 @@ import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.example.app_mobile.R
-import com.example.app_mobile.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_mobile.databinding.FragmentDashboardBinding
 import kotlinx.coroutines.launch
 
@@ -31,6 +31,8 @@ class DashboardFragment : Fragment() {
 
     private var _binding: FragmentDashboardBinding? = null
     private val binding get() = _binding!!
+
+    private val repo = RepositoryProvider.instance
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -66,7 +68,7 @@ class DashboardFragment : Fragment() {
     private fun observeSellerTabs(innerNav: NavController) {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                FakeRepository.observeCurrentUser().collect { user ->
+                repo.observeCurrentUser().collect { user ->
                     val seller = user?.isSeller == true
                     if (seller != isSellerMenu) {
                         isSellerMenu = seller

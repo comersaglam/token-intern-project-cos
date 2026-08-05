@@ -9,4 +9,28 @@
         <item name="android:background">?attr/colorOutlineVariant</item>
     </style>
 
+    <!--
+      A card that states a money direction with a soft fill and a hairline stroke.
+      No elevation: the colour carries the meaning, not a shadow. The corner radius
+      matches the approval card so every card in the app reads as one family.
+
+      The .Debt/.Credit variants are for the fixed screen headers; approval cards use
+      the base style and set their colours at bind time (they vary per row).
+    -->
+    <style name="Widget.Appmobile.DirectionCard" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardCornerRadius">12dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+
+    <style name="Widget.Appmobile.DirectionCard.Debt">
+        <item name="cardBackgroundColor">@color/debt_container</item>
+        <item name="strokeColor">@color/debt_stroke</item>
+    </style>
+
+    <style name="Widget.Appmobile.DirectionCard.Credit">
+        <item name="cardBackgroundColor">@color/credit_container</item>
+        <item name="strokeColor">@color/credit_stroke</item>
+    </style>
+
 </resources>

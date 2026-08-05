@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One pending approval: shop + kind + amount + description, with Approve/Reject. -->
+<!-- One pending approval: counterparty + kind + amount + description, with
+     Approve/Reject. The fill and stroke colours are set at bind time — they encode
+     which way value moves for the signed-in user, so they vary per row. -->
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    style="@style/Widget.Appmobile.DirectionCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
-    android:layout_marginTop="12dp"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="1dp">
+    android:layout_marginTop="12dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -31,11 +32,28 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:textSize="18sp"
             android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/approvalAmount"
+            app:layout_constraintHorizontal_bias="0"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/approvalKind"
             tools:text="Ahmet Bakkal" />
+
+        <!-- How to reach the other side: the shop's number when a shop is asking, the
+             customer's when a customer is. Hidden when unknown. -->
+        <TextView
+            android:id="@+id/approvalPhone"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="13sp"
+            app:layout_constraintEnd_toStartOf="@id/approvalAmount"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/approvalShop"
+            tools:text="+905551112233" />
 
         <TextView
             android:id="@+id/approvalAmount"
@@ -57,7 +75,7 @@
             android:textSize="14sp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/approvalShop"
+            app:layout_constraintTop_toBottomOf="@id/approvalPhone"
             tools:text="Ekmek, süt" />
 
         <com.google.android.material.button.MaterialButton

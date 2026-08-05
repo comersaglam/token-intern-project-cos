@@ -6,9 +6,12 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(11) // match :app (Java 11) so the bytecode is compatible
+    jvmToolchain(21) // match :app; Java 21 = the Android Studio JBR (jlink-capable, already installed)
 }
 
-// No dependencies on purpose: this module holds pure domain models
-// (data classes + enums) with zero third-party or Android dependencies.
-// The compiler enforces that purity — adding e.g. a Room import would not resolve.
+dependencies {
+    // Coroutines core only, for the Flow type on the Repository contract. Still pure
+    // JVM (no Android): the domain stays free of Room/Retrofit/Android imports — the
+    // compiler enforces that purity.
+    implementation(libs.kotlinx.coroutines.core)
+}

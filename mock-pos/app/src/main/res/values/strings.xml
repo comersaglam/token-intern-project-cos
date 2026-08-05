@@ -27,4 +27,7 @@
     <string name="msg_enter_amount">Önce tutar girin</string>
     <string name="msg_method_mocked">%1$s ile ödeme — bu akış henüz bağlanmadı</string>
     <string name="msg_credit_app_missing">Veresiye uygulaması (app-pos) kurulu değil</string>
+
+    <!-- Mock basket picker (long-press VERESİYE to send an item-level basket) -->
+    <string name="basket_picker_title">Sepet seç (mock PGW)</string>
 </resources>

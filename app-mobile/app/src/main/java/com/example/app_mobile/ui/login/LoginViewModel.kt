@@ -2,7 +2,7 @@ package com.example.app_mobile.ui.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_mobile.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_mobile.data.OtpService
 import com.example.app_mobile.util.PhoneFormat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +28,8 @@ enum class LoginState { IDLE, SUBMITTING, SUCCESS, ERROR, NEEDS_REGISTER }
  */
 class LoginViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
+
     private val _state = MutableStateFlow(LoginState.IDLE)
     val state: StateFlow<LoginState> = _state.asStateFlow()
 
@@ -46,7 +48,7 @@ class LoginViewModel : ViewModel() {
             // Mock OTP round trip (backend-ready). Real flow adds a code-entry screen.
             OtpService.requestOtp(stored)
             OtpService.verifyOtp(stored, code = "000000")
-            if (FakeRepository.findUserByPhone(stored) != null) {
+            if (repo.findUserByPhone(stored) != null) {
                 _state.value = if (signIn(stored)) LoginState.SUCCESS else LoginState.ERROR
             } else {
                 pendingPhone = stored
@@ -61,7 +63,7 @@ class LoginViewModel : ViewModel() {
         _state.value = LoginState.SUBMITTING
         viewModelScope.launch {
             // app-mobile registers a buyer (isSeller = false); name fills in from profile.
-            FakeRepository.registerUser(phone, displayName = "", isSeller = false)
+            repo.registerUser(phone, displayName = "", isSeller = false)
             signIn(phone)
             pendingPhone = null
             _state.value = LoginState.SUCCESS
@@ -73,12 +75,14 @@ class LoginViewModel : ViewModel() {
         _state.value = LoginState.IDLE
     }
 
-    /** Opens the session and claims this number's merchant records (old debt). */
-    private fun signIn(phone: String): Boolean {
-        val ok = FakeRepository.login(phone)
+    /** Opens the session and claims this number's merchant records (old debt).
+     *  Suspend because both calls hit the database; both callers already run in
+     *  viewModelScope. */
+    private suspend fun signIn(phone: String): Boolean {
+        val ok = repo.login(phone)
         if (ok) {
-            FakeRepository.currentUserId()?.let { userId ->
-                FakeRepository.claimCustomerForUser(userId, phone)
+            repo.currentUserId()?.let { userId ->
+                repo.claimCustomerForUser(userId, phone)
             }
         }
         return ok

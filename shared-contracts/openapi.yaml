@@ -1,0 +1,809 @@
+openapi: 3.0.3
+info:
+  title: Veresiye Platform API
+  version: 0.1.0
+  description: |
+    The single contract app-pos, app-mobile and the backend all speak (see
+    veresiye-platform-tasarim.md §4.1). Generated clients / a Prism mock come from
+    this file. Source of truth for endpoints/bodies: docs/api-endpoints.md; for the
+    data shapes: docs/db-schema.md.
+
+    Conventions:
+      - Money: every *_minor is an integer in minor units (kuruş). 50 TL = 5000. No floats.
+      - Scaling: orderBody item quantity and tax_percent are ×1000 (1000 = 1 unit / 10%).
+      - seller_id / buyer are taken from the bearer token on scoped endpoints, not the body.
+      - Field names are snake_case on the wire; Kotlin domain is camelCase (mapper converts).
+
+    Tags:
+      - "active"  = needed now (both clients' real mock behaviour). Fully modelled.
+      - "future"  = planned but not wired yet (schema/contract placeholder; code skeleton
+                    lands in Room but stays unconnected — see plan Aşama 3).
+servers:
+  - url: http://127.0.0.1:4010
+    description: Prism mock (npx @stoplight/prism-cli mock openapi.yaml)
+  - url: https://api.veresiye.example
+    description: Backend (later phase)
+
+tags:
+  - name: auth
+    description: OTP sign-in (active)
+  - name: users
+    description: Account / profile (active)
+  - name: customers
+    description: Seller's ledger customers (active)
+  - name: transactions
+    description: Append-only ledger (active)
+  - name: buyer
+    description: Buyer-scoped reads, app-mobile (active)
+  - name: approvals
+    description: Three approval lines (active)
+  - name: future
+    description: Planned endpoints, not wired yet
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ----------------------------------------------------------------- auth
+  /auth/otp/request:
+    post:
+      tags: [auth]
+      summary: Request an OTP for a phone
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OtpRequest' }
+      responses:
+        '202':
+          description: OTP dispatched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OtpRequestResult' }
+  /auth/otp/verify:
+    post:
+      tags: [auth]
+      summary: Verify an OTP; returns a session token + user
+      description: |
+        Does NOT auto-register (firm decision). An unknown phone returns 404
+        user_not_found; the caller registers via POST /users, then signs in.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OtpVerify' }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '404':
+          description: No account for this phone
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: End the session
+      responses:
+        '204': { description: Logged out }
+
+  # ----------------------------------------------------------------- users
+  /users:
+    post:
+      tags: [users]
+      summary: Register (sign-up == sign-in); idempotent by phone
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '200':
+          description: Already existed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+  /users/me:
+    get:
+      tags: [users]
+      summary: The signed-in user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+    patch:
+      tags: [users]
+      summary: Update profile (name / email)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserPatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+  /users/me/become-seller:
+    post:
+      tags: [users]
+      summary: Flip the account into a seller (+ shop info)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BecomeSeller' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  # ----------------------------------------------------------------- customers
+  /customers:
+    post:
+      tags: [customers]
+      summary: Add an UNCLAIMED customer (name + phone)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '409':
+          description: Phone already exists
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      tags: [customers]
+      summary: The seller's customers (with derived balances)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Customer' }
+              # Mirrors FakeRepository's five seed customers (u_owner's book).
+              example:
+                - { customer_id: c1, display_name: Ahmet Yılmaz, phone: '+905551112233', claim_status: CLAIMED, claimed_by_user_id: u1, balance_minor: 4000 }
+                - { customer_id: c2, display_name: Ayşe Demir, phone: '+905552223344', claim_status: UNCLAIMED, claimed_by_user_id: null, balance_minor: 16500 }
+                - { customer_id: c3, display_name: Mehmet Kaya, phone: '+905554445566', claim_status: CLAIMED, claimed_by_user_id: u3, balance_minor: 0 }
+                - { customer_id: c4, display_name: Fatma Şahin, phone: '+905556667788', claim_status: UNCLAIMED, claimed_by_user_id: null, balance_minor: 2550 }
+                - { customer_id: c5, display_name: Hasan Öztürk, phone: '+905558889900', claim_status: UNCLAIMED, claimed_by_user_id: null, balance_minor: 21000 }
+  /customers/{id}:
+    get:
+      tags: [customers]
+      summary: One customer (seller-scoped balance)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /customers/lookup:
+    get:
+      tags: [customers]
+      summary: Find a customer by phone (skip re-entry)
+      parameters:
+        - { name: phone, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ----------------------------------------------------------------- transactions
+  /transactions:
+    post:
+      tags: [transactions]
+      summary: Append a ledger entry (single write point; idempotent)
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Equals transaction_id; a retry returns the same entry.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionCreate' }
+      responses:
+        '201':
+          description: Written
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '200':
+          description: Idempotent replay (same entry)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+    get:
+      tags: [transactions]
+      summary: A customer's history with the seller (newest first)
+      parameters:
+        - { name: customer_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaction' }
+              # Ahmet's (c1) ledger from the seed: 50 + 30 − 40 = 40,00 TL (newest first).
+              example:
+                - { transaction_id: t3, seller_id: u_owner, customer_id: c1, amount_minor: 4000, type: PAYMENT, description: Nakit ödeme, basket_id: null, settled_via_pgw: false, receipt_no: null, created_at: '2026-07-22T18:00:00Z' }
+                - { transaction_id: t2, seller_id: u_owner, customer_id: c1, amount_minor: 3000, type: DEBT, description: Peynir, basket_id: null, settled_via_pgw: false, receipt_no: null, created_at: '2026-07-21T10:40:00Z' }
+                - { transaction_id: t1, seller_id: u_owner, customer_id: c1, amount_minor: 5000, type: DEBT, description: 'Ekmek, süt', basket_id: null, settled_via_pgw: false, receipt_no: null, created_at: '2026-07-20T09:15:00Z' }
+  /balances:
+    get:
+      tags: [transactions]
+      summary: The (seller, customer) balance
+      parameters:
+        - { name: customer_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Balance' }
+
+  # ----------------------------------------------------------------- buyer-scoped
+  /me/debts:
+    get:
+      tags: [buyer]
+      summary: The buyer's debts across all sellers, grouped by seller
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SellerDebt' }
+              # Buyer u1 owes two shops (app-mobile seed): Ayşe Market 100,00 + Ahmet Bakkal 40,00.
+              example:
+                - { seller_id: u_market, shop_name: Ayşe Market, balance_minor: 10000 }
+                - { seller_id: u_owner, shop_name: Ahmet Bakkal, balance_minor: 4000 }
+  /me/transactions:
+    get:
+      tags: [buyer]
+      summary: The buyer's history with one seller
+      parameters:
+        - { name: seller_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaction' }
+  /me/balances:
+    get:
+      tags: [buyer]
+      summary: The buyer's balance with one seller
+      parameters:
+        - { name: seller_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Balance' }
+
+  # ----------------------------------------------------------------- approvals
+  /approvals:
+    post:
+      tags: [approvals]
+      summary: Send for approval (one of the three lines)
+      description: |
+        CLAIMED target -> a PENDING Approval (app-push card). UNCLAIMED target ->
+        the entry is written immediately (SMS-OTP mock) and a Transaction returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApprovalCreate' }
+      responses:
+        '201':
+          description: Pending (CLAIMED target)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Approval' }
+        '200':
+          description: Written immediately (UNCLAIMED target)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+    get:
+      tags: [approvals]
+      summary: Pending approvals for the signed-in target
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Approval' }
+              # Two seed approvals (app-mobile): p1 waits on u1, p2 on u_owner.
+              example:
+                - { approval_id: p1, initiator_user_id: u_owner, initiator_role: SELLER, target_user_id: u1, seller_id: u_owner, shop_name: Ahmet Bakkal, customer_id: c1, amount_minor: 5000, type: DEBT, description: 'Ekmek, süt', channel: APP_PUSH, status: PENDING, requested_at: '2026-07-25T10:05:00Z' }
+                - { approval_id: p2, initiator_user_id: u_market, initiator_role: SELLER, target_user_id: u_owner, seller_id: u_market, shop_name: Ayşe Market, customer_id: o1, amount_minor: 7500, type: DEBT, description: Temizlik malzemesi, channel: APP_PUSH, status: PENDING, requested_at: '2026-07-25T11:20:00Z' }
+  /approvals/{id}/approve:
+    post:
+      tags: [approvals]
+      summary: Approve -> writes the ledger entry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Written
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+  /approvals/{id}/reject:
+    post:
+      tags: [approvals]
+      summary: Reject -> no write
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Rejected }
+
+  # ----------------------------------------------------------------- future (placeholders)
+  /sync/transactions:
+    post:
+      tags: [future]
+      summary: '[FAZ 4] Batch sync (outbox), idempotent per entry'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncBatch' }
+      responses:
+        '200':
+          description: Accepted ids
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncResult' }
+  /transactions/{id}/settle:
+    post:
+      tags: [future]
+      summary: '[FAZ 8] Mark a PAYMENT settled via the PGW (receipt)'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettleRequest' }
+      responses:
+        '200':
+          description: Settled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+  /insights:
+    get:
+      tags: [future]
+      summary: '[FAZ 2] Analytics (KVKK gate) — shape TBD'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Insights' }
+  /me/credit-offers:
+    get:
+      tags: [future]
+      summary: '[FAZ 2/8] Micro-credit offers for the buyer'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CreditOffer' }
+  /credit-offers/{id}/accept:
+    post:
+      tags: [future]
+      summary: '[FAZ 2/8] Accept a micro-credit offer'
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditOffer' }
+  /devices:
+    post:
+      tags: [future]
+      summary: '[FAZ 8] Register an FCM device token'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceCreate' }
+      responses:
+        '204': { description: Registered }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    # --- enums ---
+    TransactionType:
+      type: string
+      enum: [DEBT, PAYMENT]
+    ClaimStatus:
+      type: string
+      enum: [UNCLAIMED, CLAIMED]
+    ApprovalStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED]
+    InitiatorRole:
+      type: string
+      enum: [BUYER, SELLER]
+    Channel:
+      type: string
+      enum: [APP_PUSH, SMS_OTP]
+
+    # --- auth ---
+    OtpRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone: { type: string, example: '+905554443322' }
+    OtpRequestResult:
+      type: object
+      properties:
+        sent: { type: boolean }
+        channel: { $ref: '#/components/schemas/Channel' }
+    OtpVerify:
+      type: object
+      required: [phone, code]
+      properties:
+        phone: { type: string, example: '+905554443322' }
+        code: { type: string, example: '123456' }
+    Session:
+      type: object
+      required: [token, expires_at, user]
+      properties:
+        token: { type: string }
+        expires_at: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/User' }
+
+    # --- user ---
+    SellerInfo:
+      type: object
+      required: [shop_name]
+      properties:
+        shop_name: { type: string }
+        shop_phone: { type: string, nullable: true }
+    User:
+      type: object
+      required: [user_id, phone, display_name, is_buyer, is_seller, created_at]
+      # Example mirrors FakeRepository's u_owner seed (shopkeeper: both roles).
+      example:
+        user_id: u_owner
+        phone: '+905554443322'
+        display_name: Ahmet Bakkal
+        is_buyer: true
+        is_seller: true
+        email: null
+        seller_info: { shop_name: Ahmet Bakkal, shop_phone: null }
+        created_at: '2026-07-01T09:00:00Z'
+      properties:
+        user_id: { type: string }
+        phone: { type: string }
+        display_name: { type: string }
+        is_buyer: { type: boolean }
+        is_seller: { type: boolean }
+        email: { type: string, nullable: true }
+        seller_info:
+          type: object
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/SellerInfo' }]
+        created_at: { type: string, format: date-time }
+    UserCreate:
+      type: object
+      required: [phone, is_seller]
+      properties:
+        phone: { type: string }
+        display_name: { type: string, default: '' }
+        is_seller: { type: boolean }
+    UserPatch:
+      type: object
+      properties:
+        display_name: { type: string }
+        email: { type: string, nullable: true }
+    BecomeSeller:
+      type: object
+      required: [shop_name]
+      properties:
+        shop_name: { type: string }
+        shop_phone: { type: string, nullable: true }
+
+    # --- customer ---
+    Customer:
+      type: object
+      required: [customer_id, display_name, phone, claim_status, balance_minor]
+      # Mirrors FakeRepository seed c1 (Ahmet Yılmaz, CLAIMED by u1, balance 40,00 TL).
+      example:
+        customer_id: c1
+        display_name: Ahmet Yılmaz
+        phone: '+905551112233'
+        claim_status: CLAIMED
+        claimed_by_user_id: u1
+        balance_minor: 4000
+      properties:
+        customer_id: { type: string }
+        display_name: { type: string }
+        phone: { type: string }
+        claim_status: { $ref: '#/components/schemas/ClaimStatus' }
+        claimed_by_user_id: { type: string, nullable: true }
+        balance_minor:
+          type: integer
+          format: int64
+          description: Derived by the server from the ledger; never stored.
+    CustomerCreate:
+      type: object
+      required: [display_name, phone]
+      properties:
+        display_name: { type: string }
+        phone: { type: string }
+
+    # --- basket / orderBody ---
+    OrderItem:
+      type: object
+      required: [name, price, quantity, tax_percent]
+      properties:
+        name: { type: string }
+        price:
+          type: integer
+          format: int64
+          description: 'per-unit, minor units (kuruş)'
+        quantity:
+          type: integer
+          format: int64
+          description: 'scaled ×1000 (1000 = 1 unit)'
+        tax_percent:
+          type: integer
+          format: int64
+          description: 'scaled ×1000 (1000 = 10%)'
+        section_no: { type: integer, default: 1 }
+        status: { type: integer, default: 1 }
+        type: { type: integer, default: 0 }
+        item_limit: { type: integer, format: int64, default: 0 }
+    OrderBody:
+      type: object
+      required: [basket_id, items]
+      properties:
+        basket_id: { type: string, format: uuid }
+        create_invoice: { type: boolean, default: false }
+        document_type: { type: integer, default: 0 }
+        is_void: { type: boolean, default: false }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+
+    # --- transaction ---
+    Transaction:
+      type: object
+      required: [transaction_id, seller_id, customer_id, amount_minor, type, description, settled_via_pgw, created_at]
+      # Mirrors FakeRepository seed t1 (Ahmet's first debt, 50,00 TL).
+      example:
+        transaction_id: t1
+        seller_id: u_owner
+        customer_id: c1
+        amount_minor: 5000
+        type: DEBT
+        description: Ekmek, süt
+        basket_id: null
+        settled_via_pgw: false
+        receipt_no: null
+        created_at: '2026-07-20T09:15:00Z'
+      properties:
+        transaction_id: { type: string, format: uuid }
+        seller_id: { type: string }
+        customer_id: { type: string }
+        amount_minor: { type: integer, format: int64, minimum: 0 }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        description: { type: string }
+        basket_id: { type: string, format: uuid, nullable: true }
+        settled_via_pgw: { type: boolean, default: false }
+        receipt_no: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    TransactionCreate:
+      type: object
+      required: [transaction_id, customer_id, amount_minor, type, description]
+      properties:
+        transaction_id: { type: string, format: uuid }
+        customer_id: { type: string }
+        amount_minor: { type: integer, format: int64, minimum: 0 }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        description: { type: string }
+        basket:
+          type: object
+          nullable: true
+          description: Optional; omit for a money-only entry.
+          allOf: [{ $ref: '#/components/schemas/OrderBody' }]
+    Balance:
+      type: object
+      required: [seller_id, customer_id, balance_minor, as_of]
+      example:
+        seller_id: u_owner
+        customer_id: c1
+        balance_minor: 4000
+        as_of: '2026-07-30T12:00:00Z'
+      properties:
+        seller_id: { type: string }
+        customer_id: { type: string }
+        balance_minor: { type: integer, format: int64 }
+        as_of: { type: string, format: date-time }
+    SellerDebt:
+      type: object
+      required: [seller_id, shop_name, balance_minor]
+      example:
+        seller_id: u_owner
+        shop_name: Ahmet Bakkal
+        balance_minor: 6000
+      properties:
+        seller_id: { type: string }
+        shop_name: { type: string }
+        balance_minor: { type: integer, format: int64 }
+
+    # --- approval ---
+    Approval:
+      type: object
+      # Reconciled with app-mobile's real PendingApproval (shop_name, requested_at)
+      # PLUS the forward three-line fields (initiator_*/target_user_id/channel). The
+      # mock derives the three-line fields today (see plan Tur 21); full three-line
+      # behaviour + app-pos's approvals UI land in a separate turn.
+      required: [approval_id, initiator_user_id, initiator_role, target_user_id, seller_id, shop_name, customer_id, amount_minor, type, channel, status, requested_at]
+      # Line 2: seller-POS -> buyer-mobile, awaiting the buyer's approval (seed p1).
+      example:
+        approval_id: p1
+        initiator_user_id: u_owner
+        initiator_role: SELLER
+        target_user_id: u1
+        seller_id: u_owner
+        shop_name: Ahmet Bakkal
+        customer_id: c1
+        amount_minor: 5000
+        type: DEBT
+        description: Ekmek, süt
+        channel: APP_PUSH
+        status: PENDING
+        requested_at: '2026-07-25T10:05:00Z'
+      properties:
+        approval_id: { type: string }
+        initiator_user_id: { type: string }
+        initiator_role: { $ref: '#/components/schemas/InitiatorRole' }
+        target_user_id: { type: string }
+        seller_id: { type: string }
+        shop_name: { type: string, description: Denormalised for the buyer's card }
+        customer_id: { type: string }
+        amount_minor: { type: integer, format: int64 }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        description: { type: string, nullable: true }
+        channel: { $ref: '#/components/schemas/Channel' }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+        requested_at: { type: string, format: date-time }
+    ApprovalCreate:
+      type: object
+      required: [seller_id, customer_id, amount_minor, type, initiator_role, target_user_id]
+      properties:
+        seller_id: { type: string }
+        customer_id: { type: string }
+        amount_minor: { type: integer, format: int64 }
+        type: { $ref: '#/components/schemas/TransactionType' }
+        description: { type: string, nullable: true }
+        initiator_role: { $ref: '#/components/schemas/InitiatorRole' }
+        target_user_id: { type: string }
+
+    # --- future ---
+    SyncBatch:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/TransactionCreate' }
+    SyncResult:
+      type: object
+      properties:
+        accepted:
+          type: array
+          items: { type: string, format: uuid }
+    SettleRequest:
+      type: object
+      required: [receipt_no, settled_via_pgw]
+      properties:
+        receipt_no: { type: string }
+        settled_via_pgw: { type: boolean }
+    Insights:
+      type: object
+      properties:
+        risk_scores:
+          type: array
+          items:
+            type: object
+            properties:
+              customer_id: { type: string }
+              score: { type: number }
+        collection_forecast_minor: { type: integer, format: int64 }
+        as_of: { type: string, format: date-time }
+    CreditOffer:
+      type: object
+      required: [offer_id, user_id, limit_minor, apr, term_days, status]
+      properties:
+        offer_id: { type: string }
+        user_id: { type: string }
+        limit_minor: { type: integer, format: int64 }
+        apr: { type: integer, description: '×100 (1900 = 19%)' }
+        term_days: { type: integer }
+        status: { type: string, enum: [OFFERED, ACCEPTED, EXPIRED] }
+    DeviceCreate:
+      type: object
+      required: [fcm_token, platform]
+      properties:
+        fcm_token: { type: string }
+        platform: { type: string, example: android }
+
+    # --- shared ---
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }

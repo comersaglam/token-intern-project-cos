@@ -2,12 +2,13 @@ package com.example.app_pos.ui.dashboard.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.FakeRepository
+import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.model.User
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * What the profile screen shows. The gate guarantees the merchant is signed in by
@@ -24,10 +25,12 @@ sealed interface ProfileUiState {
 
 class ProfileViewModel : ViewModel() {
 
+    private val repo = RepositoryProvider.instance
+
     val uiState: StateFlow<ProfileUiState?> =
         combine(
-            FakeRepository.observeCurrentUser(),
-            FakeRepository.isPairedWithApp
+            repo.observeCurrentUser(),
+            repo.isPairedWithApp
         ) { user, paired ->
             // user is non-null here (the gate ensures a session). Null would only
             // occur during the brief logout→login transition; map it to null state
@@ -39,15 +42,19 @@ class ProfileViewModel : ViewModel() {
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Ends the session; the caller then navigates back to the login gate. */
-    fun logout() = FakeRepository.logout()
+    /** Ends the session; the caller then navigates back to the login gate. The repo
+     *  call is suspend now (persisted state), so it runs in viewModelScope; the screen
+     *  navigates on its own state change, so it does not need to await this. */
+    fun logout() {
+        viewModelScope.launch { repo.logout() }
+    }
 
     fun updateDisplayName(name: String) {
-        currentUserId()?.let { FakeRepository.updateDisplayName(it, name) }
+        currentUserId()?.let { id -> viewModelScope.launch { repo.updateDisplayName(id, name) } }
     }
 
     fun updateShopName(name: String) {
-        currentUserId()?.let { FakeRepository.updateShopName(it, name) }
+        currentUserId()?.let { id -> viewModelScope.launch { repo.updateShopName(id, name) } }
     }
 
     /** The signed-in user's id, read from the latest state (both cases carry a user). */

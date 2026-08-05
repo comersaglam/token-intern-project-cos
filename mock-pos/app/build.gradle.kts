@@ -28,8 +28,13 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // Java 21 = the Android Studio JBR, which ships jlink. This keeps JdkImageTransform
+        // on a jlink-capable JDK (fixes the jlink-not-found error) AND avoids Gradle trying to
+        // download a JDK we don't have (we have 11 and 21 installed, not 17). minSdk (24) is
+        // unchanged, so device compatibility is unaffected — compile-time language level only
+        // (D8 desugars to Dalvik regardless). Kept in sync with app-pos.
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     buildFeatures {
         viewBinding = true
