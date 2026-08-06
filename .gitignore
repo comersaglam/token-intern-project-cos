@@ -1,1 +1,35 @@
+# --- Build outputs (any depth: app-pos/, app-mobile/, mock-pos/, backend/) ---
+build/
+.gradle/
+.kotlin/
+out/
+captures/
+.cxx/
+.externalNativeBuild/
+
+# --- IDE ---
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# --- Local/machine-specific config (never commit: may hold keystore paths & secrets) ---
+local.properties
+
+# --- Logs & device dumps ---
 *.logcat
+*.log
+*.hprof
+
+# --- Android artifacts ---
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.jks
+*.keystore
+
+# --- OS ---
+.DS_Store
+Thumbs.db
