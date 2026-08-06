@@ -1,8 +1,12 @@
 package com.example.app_pos
 
 import android.app.Application
+import com.example.app_pos.data.di.ApplicationScope
+import com.example.app_pos.model.Repository
 import com.example.app_pos.network.auth.TokenStore
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
@@ -18,6 +22,10 @@ import javax.inject.Inject
 class App : Application() {
 
     @Inject lateinit var tokenStore: TokenStore
+    @Inject lateinit var repository: Repository
+
+    /** Process-lived, so a drain is not cancelled by whatever screen happens to close. */
+    @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate()
@@ -33,5 +41,13 @@ class App : Application() {
         // The cost is one small DataStore read on a file the process just opened anyway,
         // once per launch, at a point where no frame has been drawn yet.
         runBlocking { tokenStore.prime() }
+
+        // Then push anything the last session could not deliver — the terminal that was
+        // offline yesterday catches up as soon as it is opened with signal.
+        //
+        // Backgrounded, unlike prime(): nothing on screen depends on the result, and the
+        // drain absorbs its own failures (an offline device simply leaves the queue alone).
+        // Blocking here would delay the first frame for a network round trip.
+        appScope.launch { repository.syncNow() }
     }
 }

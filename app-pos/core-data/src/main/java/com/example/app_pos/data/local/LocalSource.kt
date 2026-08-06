@@ -1,6 +1,9 @@
 package com.example.app_pos.data.local
 
+import com.example.app_pos.data.db.entity.OutboxEntity
+import com.example.app_pos.model.OrderBody
 import com.example.app_pos.model.Repository
+import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.User
 import kotlinx.coroutines.flow.Flow
 
@@ -19,4 +22,33 @@ interface LocalSource : Repository {
 
     /** Every stored user, with no session filter applied. */
     fun observeAllUsers(): Flow<List<User>>
+
+    // --- the offline outbox ---------------------------------------------------
+
+    /**
+     * Books a ledger entry and queues it for the server in ONE database transaction, so a
+     * crash can never leave an entry the server will not hear about (or a queued send for
+     * an entry that was never booked).
+     *
+     * [sendPayload] is the serialised request body. It is built by the caller because
+     * turning a domain object into a wire shape belongs to the network layer, not to
+     * storage — this interface only promises to keep the string safe.
+     */
+    suspend fun addTransactionQueued(
+        transaction: Transaction,
+        orderBody: OrderBody?,
+        sendPayload: String
+    )
+
+    /** Rows still waiting to reach the server, oldest first. */
+    suspend fun pendingOutbox(): List<OutboxEntity>
+
+    /** Called when a write is accepted, or refused in a way retrying cannot fix. */
+    suspend fun deleteOutbox(id: String)
+
+    /** Bumps retryCount, so an entry that keeps failing becomes visible instead of silent. */
+    suspend fun recordOutboxFailure(id: String)
+
+    // observeUnsentCount() is inherited from Repository — the queue depth is a fact about
+    // stored data, so the local source is where it is actually answered.
 }

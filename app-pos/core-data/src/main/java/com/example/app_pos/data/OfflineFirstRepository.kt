@@ -2,6 +2,11 @@ package com.example.app_pos.data
 
 import com.example.app_pos.data.local.LocalSource
 import com.example.app_pos.data.remote.RemoteDataSource
+import com.example.app_pos.data.sync.SyncEngine
+import com.example.app_pos.data.sync.SyncOutcome
+import com.example.app_pos.network.dto.TransactionCreateDto
+import com.example.app_pos.network.mapper.toCreateDto
+import com.squareup.moshi.Moshi
 import com.example.app_pos.model.Customer
 import com.example.app_pos.model.CustomerLookup
 import com.example.app_pos.model.OrderBody
@@ -43,8 +48,14 @@ import javax.inject.Singleton
 class OfflineFirstRepository @Inject constructor(
     private val local: LocalSource,
     @Suppress("unused") private val remote: RemoteDataSource,
-    private val tokens: TokenStore
+    private val syncEngine: SyncEngine,
+    private val tokens: TokenStore,
+    moshi: Moshi
 ) : Repository {
+
+    // Serialises the queued request body. Held here rather than built per write: adapter
+    // creation is reflection-backed work that would otherwise repeat on every sale.
+    private val payloadAdapter = moshi.adapter(TransactionCreateDto::class.java)
 
     // --- session -------------------------------------------------------------
 
@@ -130,11 +141,40 @@ class OfflineFirstRepository @Inject constructor(
     override fun observeBalance(sellerId: String, customerId: String): Flow<Long> =
         local.observeBalance(sellerId, customerId)
 
-    override suspend fun addTransaction(transaction: Transaction, orderBody: OrderBody?) =
-        // Writes land in Room only. Phase 8 makes this atomic with an outbox row so the
-        // entry can reach the server later; queueing before that engine exists would build
-        // a backlog nothing drains.
-        local.addTransaction(transaction, orderBody)
+    /**
+     * Books the entry locally and queues it for the server — atomically, in one database
+     * transaction (see LocalSource.addTransactionQueued).
+     *
+     * Deliberately does NOT wait for the network. The merchant's screen updates from Room
+     * the moment this returns, whether or not there is signal; SyncEngine delivers the
+     * entry afterwards. Sending inline would make a veresiye fail on a dead connection,
+     * which on a shop floor is the common case, not the edge case.
+     *
+     * The wire body is serialised HERE, at approval time, and stored verbatim. So what
+     * eventually reaches the server is exactly what was confirmed.
+     */
+    override suspend fun addTransaction(transaction: Transaction, orderBody: OrderBody?) {
+        val payload = payloadAdapter.toJson(transaction.toCreateDto(orderBody))
+        local.addTransactionQueued(transaction, orderBody, payload)
+    }
+
+    /**
+     * Pushes whatever is queued. Safe to call at any time: it is a no-op on an empty queue,
+     * only one drain runs at a time, and every send is idempotent.
+     *
+     * Called on sign-in and on app start (see App.onCreate). WorkManager-driven background
+     * syncing is a separate step; this covers the case that matters most — a terminal that
+     * was offline is opened again once there is signal.
+     */
+    override suspend fun syncNow() {
+        drainAndReport()
+    }
+
+    /** The same drain, with the counts — for a caller that wants to show them. */
+    suspend fun drainAndReport(): SyncOutcome = syncEngine.drainOutbox()
+
+    /** How many writes have not reached the server yet. */
+    override fun observeUnsentCount(): Flow<Int> = local.observeUnsentCount()
 
     // --- helpers -------------------------------------------------------------
 

@@ -41,6 +41,7 @@ class RoomLocalDataSource(private val db: AppDatabase) : LocalSource {
     private val customers = db.customerDao()
     private val transactions = db.transactionDao()
     private val baskets = db.basketDao()
+    private val outbox = db.outboxDao()
 
     // --- session + pairing (RAM, mock — see class doc) -----------------------
     private data class Session(val userId: String, val token: String, val expiresAt: Long)
@@ -192,12 +193,19 @@ class RoomLocalDataSource(private val db: AppDatabase) : LocalSource {
      * withTransaction makes the pair a single unit: the database either has both rows or
      * neither.
      *
-     * The queue row carries the request body, not a reference to the ledger row. The
-     * server must receive exactly what was agreed at approval time, so a later local edit
-     * (there are none today — the ledger is append-only — but the outbox should not depend
-     * on that) cannot change what gets sent.
+     * The queue row carries a ready-made request body ([sendPayload]), not a reference to
+     * the ledger row. Two reasons: the server must receive exactly what was agreed at
+     * approval time, and serialising the wire shape is the network layer's job — this class
+     * stores the string without knowing what is in it.
+     *
+     * The Repository interface's addTransaction delegates here with the payload it built,
+     * so the domain contract stays free of any mention of a queue.
      */
-    override suspend fun addTransaction(transaction: Transaction, orderBody: OrderBody?) {
+    override suspend fun addTransactionQueued(
+        transaction: Transaction,
+        orderBody: OrderBody?,
+        sendPayload: String
+    ) {
         db.withTransaction {
             // When a basket rode along on the handoff, persist it first and link the entry;
             // a money-only entry links no basket (basketId = null).
@@ -214,13 +222,48 @@ class RoomLocalDataSource(private val db: AppDatabase) : LocalSource {
                     // send will carry.
                     id = transaction.transactionId,
                     transactionId = transaction.transactionId,
-                    payload = payloadJson.toJson(transaction.toCreateDto(orderBody)),
+                    payload = sendPayload,
                     createdAt = transaction.createdAt,
                     retryCount = 0
                 )
             )
         }
     }
+
+    /**
+     * Books a ledger entry WITHOUT queueing it — the plain contract method.
+     *
+     * Nothing in app-pos calls this any more (the repository always queues), but it keeps
+     * this class a complete Repository on its own, which is what lets the session tests
+     * substitute a local source without knowing about the outbox.
+     */
+    override suspend fun addTransaction(transaction: Transaction, orderBody: OrderBody?) {
+        db.withTransaction {
+            val basketId = orderBody?.let { ob ->
+                baskets.insertBasket(ob.toBasketEntity(transaction.createdAt))
+                baskets.insertItems(ob.toItemEntities())
+                ob.basketId
+            }
+            transactions.insert(transaction.toEntity(basketId))
+        }
+    }
+
+    /**
+     * No-op here: this class is the LOCAL half and owns no network. Draining the queue
+     * needs a remote source, so it belongs to the composing repository — which overrides
+     * this. Present only because LocalSource extends the full Repository contract.
+     */
+    override suspend fun syncNow() = Unit
+
+    /** Rows still waiting to reach the server, oldest first. */
+    override suspend fun pendingOutbox(): List<OutboxEntity> = outbox.all()
+
+    override suspend fun deleteOutbox(id: String) = outbox.delete(id)
+
+    override suspend fun recordOutboxFailure(id: String) = outbox.recordFailure(id)
+
+    /** How many writes are unsent; drives a sync indicator later. */
+    override fun observeUnsentCount(): Flow<Int> = outbox.observeCount()
 
     // --- helpers -------------------------------------------------------------
 

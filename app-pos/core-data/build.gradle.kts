@@ -53,4 +53,7 @@ dependencies {
     // only has to create the interfaces — no server, no MockWebServer.
     testImplementation(libs.retrofit)
     testImplementation(libs.retrofit.converter.moshi)
+    // The drain tests run against a real HTTP server, so retry classification, headers and
+    // dropped sockets are exercised through the actual OkHttp stack rather than a stub.
+    testImplementation(libs.okhttp.mockwebserver)
 }

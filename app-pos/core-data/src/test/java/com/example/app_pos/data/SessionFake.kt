@@ -1,5 +1,6 @@
 package com.example.app_pos.data
 
+import com.example.app_pos.data.db.entity.OutboxEntity
 import com.example.app_pos.data.local.LocalSource
 import com.example.app_pos.model.Customer
 import com.example.app_pos.model.CustomerLookup
@@ -42,6 +43,53 @@ class FakeLocalSource(users: List<User> = emptyList()) : LocalSource {
     override suspend fun logout() {
         loggedOut = true
     }
+
+    // --- outbox ---------------------------------------------------------------
+    // A list, not a database, but it keeps the two properties the drain depends on:
+    // insertion order, and idempotency by id (re-queueing the same entry is a no-op).
+
+    private val queue = mutableListOf<OutboxEntity>()
+
+    /** Retry counts by entry id, so a test can assert a failure was recorded. */
+    val retryCounts = mutableMapOf<String, Int>()
+
+    override suspend fun addTransactionQueued(
+        transaction: Transaction,
+        orderBody: OrderBody?,
+        sendPayload: String
+    ) {
+        if (queue.none { it.id == transaction.transactionId }) {
+            queue += OutboxEntity(
+                id = transaction.transactionId,
+                transactionId = transaction.transactionId,
+                payload = sendPayload,
+                createdAt = transaction.createdAt,
+                retryCount = 0
+            )
+        }
+    }
+
+    /** Seeds the queue directly, for tests about draining rather than about enqueueing. */
+    fun enqueueRaw(entry: OutboxEntity) {
+        queue += entry
+    }
+
+    // Sorted, not insertion-ordered: the real DAO is "ORDER BY createdAt", and a test that
+    // relied on insertion order would pass here while the DAO did something else.
+    override suspend fun pendingOutbox(): List<OutboxEntity> = queue.sortedBy { it.createdAt }
+
+    override suspend fun deleteOutbox(id: String) {
+        queue.removeAll { it.id == id }
+    }
+
+    override suspend fun recordOutboxFailure(id: String) {
+        retryCounts[id] = (retryCounts[id] ?: 0) + 1
+    }
+
+    override fun observeUnsentCount(): Flow<Int> = flowOf(queue.size)
+
+    // Draining needs a remote source; the composing repository overrides this.
+    override suspend fun syncNow() = Unit
 
     // --- the rest is out of scope for the session tests -----------------------
 

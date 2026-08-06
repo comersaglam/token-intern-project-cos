@@ -51,6 +51,24 @@ interface Repository {
      * Appends a ledger entry. If [orderBody] is present (a basket handoff), its basket
      * and items are stored and the entry is linked to them; a money-only entry passes
      * null. Idempotent by transactionId.
+     *
+     * Returns as soon as the entry is stored locally — never waits for the network. Where
+     * a backend exists, the entry is also queued for it in the same database transaction
+     * and delivered later by [syncNow].
      */
     suspend fun addTransaction(transaction: Transaction, orderBody: OrderBody? = null)
+
+    // --- sync ---
+
+    /**
+     * Pushes writes that have not reached the server yet.
+     *
+     * Safe to call at any time: a no-op when nothing is queued, single-flight, and every
+     * send is idempotent. Failures are absorbed — the queue simply keeps the entry — so a
+     * caller does not have to handle an offline device.
+     */
+    suspend fun syncNow()
+
+    /** How many writes are still unsent; 0 means the device and server agree. */
+    fun observeUnsentCount(): Flow<Int>
 }

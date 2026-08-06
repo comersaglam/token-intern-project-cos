@@ -8,6 +8,7 @@ import com.example.app_pos.network.api.LedgerApi
 import com.example.app_pos.network.api.SyncApi
 import com.example.app_pos.network.api.UserApi
 import com.example.app_pos.data.remote.RemoteDataSource
+import com.example.app_pos.data.sync.SyncEngine
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -35,12 +36,18 @@ class OfflineFirstSessionTest {
 
     private val tokens = FakeTokenStore()
 
-    private fun repo(vararg users: com.example.app_pos.model.User) =
-        OfflineFirstRepository(
-            local = FakeLocalSource(users.toList()),
-            remote = unusedRemote(),
-            tokens = tokens
+    private fun repo(vararg users: com.example.app_pos.model.User): OfflineFirstRepository {
+        val local = FakeLocalSource(users.toList())
+        val remote = unusedRemote()
+        val moshi = Moshi.Builder().build()
+        return OfflineFirstRepository(
+            local = local,
+            remote = remote,
+            syncEngine = SyncEngine(local, remote, moshi),
+            tokens = tokens,
+            moshi = moshi
         )
+    }
 
     @Test
     fun `no session means the gate is closed`() {
@@ -151,7 +158,7 @@ class OfflineFirstSessionTest {
         val repo = repo(testUser())
         repo.login("05554443322")
 
-        val emptyDb = OfflineFirstRepository(FakeLocalSource(), unusedRemote(), tokens)
+        val emptyDb = repo()  // same token store, no users
 
         assertNull(emptyDb.observeCurrentUser().first())
     }

@@ -24,6 +24,7 @@ import com.example.app_pos.network.dto.SessionDto
 import com.example.app_pos.network.dto.SettleRequestDto
 import com.example.app_pos.network.dto.SyncBatchDto
 import com.example.app_pos.network.dto.SyncResultDto
+import com.example.app_pos.network.dto.TransactionCreateDto
 import com.example.app_pos.network.dto.UserPatchDto
 import com.example.app_pos.network.mapper.approvalCreateDto
 import com.example.app_pos.network.mapper.customerCreateDto
@@ -139,11 +140,22 @@ class RemoteDataSource @Inject constructor(
         transaction: Transaction,
         orderBody: OrderBody? = null
     ): ApiResult<Transaction?> =
+        createTransaction(transaction.toCreateDto(orderBody), transaction.transactionId)
+
+    /**
+     * The same write, from a body that was serialised earlier — how the outbox sends: the
+     * queued row holds the exact payload agreed at approval time, so what reaches the
+     * server cannot drift from what the merchant confirmed.
+     *
+     * [idempotencyKey] is passed rather than read from the body so the caller stays the one
+     * responsible for replay identity; it is always the entry's transaction id.
+     */
+    suspend fun createTransaction(
+        body: TransactionCreateDto,
+        idempotencyKey: String
+    ): ApiResult<Transaction?> =
         apiCall(moshi) {
-            ledgerApi.create(
-                idempotencyKey = transaction.transactionId,
-                body = transaction.toCreateDto(orderBody)
-            ).toDomainOrNull()
+            ledgerApi.create(idempotencyKey = idempotencyKey, body = body).toDomainOrNull()
         }
 
     /** Entries whose type this client cannot interpret are dropped — see toDomainList. */

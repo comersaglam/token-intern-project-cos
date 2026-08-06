@@ -1319,3 +1319,64 @@ NOT: bu turda `:app:assembleDebug` sandbox'ta jlink hatası VERMEDİ (önceki tu
 atomik), `OutboxDao.insert`'e `onConflict = IGNORE` (şu an default ABORT → retry'da patlar),
 `SyncEngine.drainOutbox()` `isRetryable()` kuralıyla. WorkManager ayrı tur. Sonra app-mobile'a
 `:core-network` kopyası + Aşama 0 timestamp geçişi.
+
+### 2026-08-06 — Tur 27: FAZ 4 Aşama 8 — outbox yazımı + SyncEngine (ağ ilk kez yazma yolunda)
+
+Aşama 7 yolu açmıştı (`RemoteDataSource` hazır, Hilt enjekte ediyor); bu tur o yoldan **ilk gerçek
+trafik** geçiyor. Veresiye yazınca artık sunucuya da gidiyor — ama esnaf ASLA ağı beklemiyor.
+
+**1) Atomik yazma (`RoomLocalDataSource.addTransactionQueued`):** ledger INSERT + outbox INSERT
+**tek `db.withTransaction` içinde**. Ayrı yazılsalar, aradaki process ölümü ya "sunucunun asla
+duymayacağı kayıt" ya da "olmayan kayıt için gönderim kuyruğu" bırakırdı — ikisi de sonradan
+tespit edilemez. Kuyruk satırı **hazır JSON gövde** taşır (ledger satırına referans değil):
+sunucuya onay anında mutabık kalınan şey gitmeli.
+
+**2) `OutboxDao.insert` → `onConflict = IGNORE` (plandaki latent bug):** default `ABORT`'tu.
+Satır id'si = transaction id olduğu için, tekrar kuyruğa girme denemesi (retry, devam eden handoff)
+**exception fırlatacaktı** — yani kuyruk tam işini yaparken patlayacaktı. DAO'ya ayrıca
+`observeCount()` (senkronlanmamış sayısı) + `recordFailure()` (retryCount++) eklendi.
+
+**3) `SyncEngine.drainOutbox()`** — üç kural:
+- **Sıra:** eski→yeni, ve **retryable hata RUN'I DURDURUR**. Ağ yoksa 2. kayıt da aynı sebeple
+  düşecek; gerisini denemek sadece retryCount şişirir ve pil yakar.
+- **Ne yapılacağı `isRetryable()`'dan gelir** (Aşama 4'te `ApiResult`'a yazılmıştı, tüketicisi şimdi
+  geldi): ağ hatası/5xx → satır KALIR; 4xx/409 → satır SİLİNİR (kalıcı ret sonsuza dek denenmez).
+- **Silmek güvenli çünkü gönderim idempotent:** `Idempotency-Key` = transaction id, cevap kaybolsa
+  bile resend orijinali tekrar oynatır, ikinci veresiye açmaz.
+- Parse edilemeyen payload → **istek atmadan** düşer (kuyruk başını sonsuza dek tıkamasın).
+- `Mutex` ile tek-uçuş: iki eş zamanlı drain aynı satırları iki kez gönderirdi.
+
+**4) Tetikleyiciler:** `App.onCreate` (dün offline olan terminal, sinyalli açılınca yetişir) ve
+**OTP sonrası** yazının hemen ardından. İkincisi `@ApplicationScope` ile **ekranı aşan** scope'ta —
+`onWritten()` satış akışını kapatıp `viewModelScope`'u iptal ediyor, orada başlatılan push istek
+ortasında ölürdü. Yeni `data/di/AppScope.kt`: `@ApplicationScope CoroutineScope` + `@IoDispatcher`.
+
+**5) `Repository` arayüzüne `syncNow()` + `observeUnsentCount()`** eklendi. `addTransaction` KDoc'u
+"lokale yazar, ağı BEKLEMEZ" sözleşmesini artık açıkça yazıyor.
+
+**Öğrenilenler:**
+- **Serileştirme depolamanın işi değil.** Önce `RoomLocalDataSource`'a `TransactionCreateDto` +
+  Moshi import ettim — katman ihlali. Doğrusu: payload'ı repository üretir, local kaynak string'i
+  ne olduğunu bilmeden saklar.
+- **`viewModelScope` "yazdıktan sonra" işi için yanlış scope.** Ekran kapanınca iptal olur. Yazmanın
+  KENDİSİ ekrana bağlı (kullanıcı bekliyor), ama gönderimi değil.
+- **Test fake'i gerçek DAO'nun sırasını taklit etmeli.** `pendingOutbox()` önce insertion order
+  dönüyordu; DAO `ORDER BY createdAt`. Fake'i `sortedBy` yapmasam "sıra" testi yalancı yeşil olurdu.
+- **Drain asla throw etmemeli.** Patlarsa kuyruk temelli tıkanır; bu yüzden parse hatası bile
+  `runCatching` ile değere çevrilip "kalıcı bozuk" muamelesi görüyor.
+
+**Doğrulama:** `:core-domain:build` ✓, `:app:assembleDebug` ✓, `:app:assembleRelease` ✓,
+**42 unit test / 0 fail / 0 skip** (22 network + 10 session + **10 yeni SyncEngine**). Uyarı yok.
+SyncEngine testleri **MockWebServer** ile gerçek OkHttp/Retrofit yığınına karşı koşuyor (stub değil):
+idempotency header'ı, sıra, kopan soket, 500/400/409 ayrımı, bozuk payload.
+**DB versiyonu 2'de KALDI** — `outbox` tablosu zaten iskelet olarak vardı, migration/uninstall YOK.
+
+**CİHAZ TESTİ:** Aşama 7'nin listesi aynen geçerli (hepsi bozulmamalı). Aşama 8'e özel:
+- Prism KAPALIYKEN veresiye yaz → **normal çalışmalı**, ekran beklememeli (kuyrukta birikir).
+- `npx @stoplight/prism-cli mock shared-contracts/openapi.yaml` açıp app'i yeniden başlat →
+  birikenler gitmeli (Prism loglarında `POST /transactions` + `Idempotency-Key`).
+- Prism AÇIKKEN veresiye yaz → anında POST görünmeli.
+
+**Sıradaki:** WorkManager (arka plan periyodik drain — `WorkerFactory` + Hilt entegrasyonu, ayrı tur;
+şu an sadece açılış + yazma sonrası tetikleniyor). Sonra app-mobile'a `:core-network` kopyası +
+Aşama 0 timestamp geçişi. `login()`'in gerçek `AuthApi.verifyOtp`'ye bağlanması da bekliyor (FAZ 4b).
