@@ -1248,3 +1248,74 @@ bloğunda (`ApprovalsViewModel.toCard`) + KDoc'lar; renk kaynakları ve enum dok
 **Doğrulama:** `:app:assembleDebug` ✓ uyarısız. `docs/test-hesaplari.md` renk tablosu +
 "dört tonu üretme" adımları güncellendi (her ton ONAYLAYANIN ekranında görünür — başlatan
 kendi rengini görmez).
+
+### 2026-08-06 — Tur 26: FAZ 4 Aşama 7 — `:core-network` bağlandı + Hilt + session diske  [FAZ 4 yarısı]
+
+`:core-network` (Aşama 0-6'da yazılmıştı) artık **çağrılıyor**: `:core-data` ona bağlı, `:app` Hilt
+kullanıyor, ve session RAM'den **diske** taşındı. Kullanıcıya dönük tek görünür kazanç: **oturum
+açıkken uygulamayı kapatıp açınca login sormuyor.**
+
+**Adımlar (7a-7g, her biri ayrı derlendi):**
+- **7a** `:core-data` → `implementation(project(":core-network"))` + hilt plugin. `RoomRepository.kt`
+  → `local/RoomLocalDataSource.kt` (davranış aynı, sadece isim/yer).
+- **7b** `remote/RemoteDataSource.kt` — **7 API'nin hepsi** sarmalandı (kullanıcı kararı: app-mobile
+  düz kopyalasın). Her metot `apiCall` → `ApiResult` döner, DTO sızdırmaz (istisna: approval/sync —
+  app-pos'ta domain tipleri yok). **Bu turda çağıranı YOK.**
+- **7c** `OfflineFirstRepository : Repository` — `LocalSource` + `RemoteDataSource` + `TokenStore`
+  besteler. `isSessionValid()`/`currentSellerId()` **senkron KALDI** (TokenStore RAM cache'ten).
+  `login()` hâlâ **lokal doğruluyor** ama ürettiği session `SessionDto` olarak `tokenStore.save()`
+  ile **diske** yazılıyor. **10 yeni unit test.**
+- **7d+7e BİRLEŞTİRİLDİ** (plan sapması, aşağıda) — Hilt `:app`'e: `@HiltAndroidApp App`,
+  `@AndroidEntryPoint MainActivity` + 10 fragment, **7 VM** `@HiltViewModel`.
+- **7f** `di/DataModule.kt` (AppDatabase + LocalSource + Repository binding); `RepositoryProvider.kt`
+  **SİLİNDİ**.
+- **7g** `network_security_config.xml` (cleartext SADECE 10.0.2.2/127.0.0.1/localhost) + manifest'e
+  `INTERNET` izni. **`usesCleartextTraffic="true"` KONMADI** — release manifest'te grep ile doğrulandı.
+
+**PLAN SAPMASI — 7d ve 7e ayrılamadı (kod okumasıyla bulundu):** Plan "önce sadece MainActivity'yi
+inject et, VM'ler eski provider'da kalsın" diyordu. Ama `LoginViewModel.login()` provider'ın
+**RAM** session'ına yazarken `MainActivity.isSessionValid()` **diskteki**ni okuyacaktı → giriş
+başarılı görünür, gate hiç açılmazdı. İki taraf aynı session'ı görmek zorunda → tek adımda taşındı.
+
+**DEVIR dokümanı bayattı (kod okuması düzeltti):** "CREDIT dalı login gate'i ATLAR" artık YANLIŞ —
+`MainActivity` evrilmiş, `pendingHandoffOrderBody` + `onLoginSucceeded()` ile oturum yoksa login'e
+gidip akışı kaldığı yerden sürdürüyor. Yani `isSessionValid()` senkronluğu daha da kritik.
+
+**İki VM Hilt DIŞINDA kaldı (kasıtlı):** `ConfirmViewModel` — `customerId`'yi nav arg'dan değil
+**başka VM'in runtime state'inden** alıyor, `SavedStateHandle` çözemez → factory'si korundu,
+`ConfirmFragment` repo'yu inject edip factory'ye geçiriyor. `SaleViewModel` — repo'ya hiç dokunmuyor.
+`CustomerDetailViewModel` ise nav arg aldığı için `SavedStateHandle` ile temizce geçti (elle yazılmış
+factory silindi — bonus: artık process death'i de atlatıyor).
+
+**Öğrenilenler:**
+- **`implementation(project(...))` Hilt için yetmez.** `RemoteDataSource` constructor'ında `Moshi`
+  vardı ama `:core-network` onu `implementation` ile tutuyordu → KSP "could not be resolved" dedi.
+  Constructor'da geçen HER tip modülün kendi compile classpath'inde olmalı. (`:core-network`'ü de
+  `api(...)` ile açtık: `:app` `TokenStore` inject ediyor.)
+- **Test edilebilirlik arayüzden gelir.** `OfflineFirstRepository` somut `RoomLocalDataSource` alsaydı
+  session testleri Room ayağa kaldırmak zorundaydı. Yeni `LocalSource` arayüzü sayesinde 10 test saf
+  JVM'de koşuyor — test edilen şey (gate) veritabanına hiç bağlı değil.
+- **Sahte saat gerçek saatten başlamalı.** `FakeTokenStore(now = 1_000_000L)` ile expiry testi patladı:
+  repo `System.currentTimeMillis()` ile expiry üretiyor, sahte epoch'a göre session zaten yıllar önce
+  bitmiş görünüyordu. `now`'ı gerçek saatle başlatınca düzeldi.
+- **`prime()` BLOKLAYICI olmalı.** `MainActivity.onCreate` gate'i senkron okuyor; `prime()`'ı arka plan
+  coroutine'ine atmak yarış yaratırdı → yarışı kaybedince giriş yapmış esnaf login ekranı görürdü
+  (**aralıklı** ortaya çıkan, en kötü türden bug). `runBlocking` maliyeti: süreç zaten açtığı bir
+  dosyadan tek küçük okuma, henüz hiçbir frame çizilmemişken.
+
+**Doğrulama:** `:app:assembleDebug` ✓ (Dagger grafiği uçtan uca doğrulandı), `:app:assembleRelease` ✓,
+`:core-domain:build` ✓, **32 unit test / 0 fail / 0 skip** (22 network + 10 yeni session). Uyarı yok.
+NOT: bu turda `:app:assembleDebug` sandbox'ta jlink hatası VERMEDİ (önceki turların ortam sorunu).
+
+**CİHAZ TESTİ BEKLİYOR** (`posbuild`) — DB şeması değişmedi, uninstall gerekmez:
+- *Grup A (bozulmamalı):* (1) launcher → login gate; (2) `05554443322` → dashboard, flash yok;
+  (3) mock-pos VERESİYE → onay → OTP → mock-pos'a döner; (4) **oturum kapalıyken** VERESİYE → login →
+  giriş → satış akışı kaldığı yerden devam eder; (5) çıkış → login, dashboard geçmişten silinir;
+  (6) müşteri detayı → geri oku listeye döner; (7) ödeme akışı dashboard'a döner, mock-pos'a GİTMEZ.
+- *Grup B (Aşama 7'nin kazancı):* (8) **oturum açıkken app'i tamamen kapat-aç → login SORMAZ**;
+  (9) çıkış yap → kapat-aç → login SORAR.
+
+**Sıradaki:** Aşama 8 — outbox yazımı (`addTransaction` içinde `db.withTransaction` ile ledger+outbox
+atomik), `OutboxDao.insert`'e `onConflict = IGNORE` (şu an default ABORT → retry'da patlar),
+`SyncEngine.drainOutbox()` `isRetryable()` kuralıyla. WorkManager ayrı tur. Sonra app-mobile'a
+`:core-network` kopyası + Aşama 0 timestamp geçişi.

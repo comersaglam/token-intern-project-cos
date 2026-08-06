@@ -2,7 +2,9 @@ package com.example.app_pos.ui.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import com.example.app_pos.util.PhoneFormat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,9 +26,10 @@ enum class LoginState { IDLE, SUBMITTING, SUCCESS, ERROR, NEEDS_REGISTER }
  * screen — SUBMITTING will hold while a real phone+OTP request is in flight, and
  * SUCCESS will fire only after the code is verified and a session token is stored.
  */
-class LoginViewModel : ViewModel() {
-
-    private val repo = RepositoryProvider.instance
+@HiltViewModel
+class LoginViewModel @Inject constructor(
+    private val repo: Repository
+) : ViewModel() {
     private val _state = MutableStateFlow(LoginState.IDLE)
     val state: StateFlow<LoginState> = _state.asStateFlow()
 

@@ -199,13 +199,23 @@ data class SellerInfo(
 - Token her isteğe `:core-network`'teki `AuthInterceptor` ile eklenir.
 - Token'lar şifreli saklanır (EncryptedSharedPreferences / DataStore + Keystore).
 
+> **Uygulamadaki sapma (Tur 26 / Aşama 7):** düz DataStore kullanıldı, şifreleme YOK.
+> Gerekçe: `EncryptedSharedPreferences` **deprecated**, ve dükkân tezgâhındaki bir POS
+> için app sandbox'ı + cihazın dosya-tabanlı şifrelemesi gerçekçi tehdidi zaten
+> karşılıyor. Depolama `TokenStore` **arayüzünün** arkasında olduğu için Keystore
+> destekli bir implementasyon sonradan tek satırla (DataModule'de binding) takılır —
+> hiçbir çağıran değişmez.
+
 ### Mevcut mock uygulama (Tur 15-16 — app-pos)
 Yukarısı backend hedefidir; şu an mock ama gerçek mimariyle:
 - **Session ayrı tutulur (User'a değil):** `FakeRepository`'de `Session(userId, token,
   loggedInAt, expiresAt)`. `isSessionValid()` = token var + `expiresAt > now` (7 gün TTL,
   kodda gerçek). User = kimlik (domain); Session = oturum-state. Backend'de token
-  DataStore/Room'da, User tablosunda DEĞİL. **MOCK sınırı:** RAM'de → app kapanınca
-  sıfırlanır (kalıcılık FAZ 3/Room).
+  DataStore/Room'da, User tablosunda DEĞİL.
+  **~~MOCK sınırı: RAM'de → app kapanınca sıfırlanır.~~ Tur 26'da KALKTI:** session artık
+  `TokenStore` (DataStore) ile diskte; app kapanıp açılınca oturum korunur. Login hâlâ
+  lokal doğruluyor (ağ çağrısı yok), ama ürettiği session gerçek `SessionDto` olarak
+  saklanıyor → backend gelince sadece token'ın KAYNAĞI değişir.
 - **Session "kim" bilgisini taşır:** `Session.userId` → `observeCurrentUser()` ve
   `currentSellerId()` hep bunu çözer (hardcoded değil). Kim login'se onun profili/ledger'ı.
 - **Login-gate = nav_graph startDestination** (redirect değil): `MainActivity.onCreate`

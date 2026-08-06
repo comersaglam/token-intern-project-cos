@@ -1,6 +1,8 @@
-package com.example.app_pos.data
+package com.example.app_pos.data.local
 
+import androidx.room.withTransaction
 import com.example.app_pos.data.db.AppDatabase
+import com.example.app_pos.data.db.entity.OutboxEntity
 import com.example.app_pos.data.db.toBasketEntity
 import com.example.app_pos.data.db.toDomain
 import com.example.app_pos.data.db.toEntity
@@ -21,15 +23,19 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 /**
- * Room-backed [Repository]: the persistent replacement for FakeRepository. Same public
- * surface, so the ViewModels do not change — the offline-first payoff.
+ * The LOCAL half of the data layer: everything this device knows without a network.
  *
- * What persists: users, customers, the append-only ledger, baskets. What stays in RAM
- * (mock, like before): the session + pairing flag — a real backend returns a JWT stored
- * in DataStore later, so only these bodies change then. Balances are never stored; they
- * are summed from the ledger (DAO SUM or the pure balanceOf).
+ * It still satisfies [Repository] in full, which is what keeps this step behaviour-neutral
+ * — OfflineFirstRepository composes it with the remote source and the token store, and
+ * only the session bodies move out. Reads that survive a flight-mode POS stay here.
+ *
+ * What persists: users, customers, the append-only ledger, baskets. Balances are never
+ * stored; they are summed from the ledger (DAO SUM or the pure balanceOf).
+ *
+ * The session + pairing flag below are still RAM-only mocks. They move to the persisted
+ * TokenStore in the composing repository, which is why they stay untouched here.
  */
-class RoomRepository(private val db: AppDatabase) : Repository {
+class RoomLocalDataSource(private val db: AppDatabase) : LocalSource {
 
     private val users = db.userDao()
     private val customers = db.customerDao()
@@ -71,6 +77,16 @@ class RoomRepository(private val db: AppDatabase) : Repository {
             val valid = s != null && s.expiresAt > System.currentTimeMillis()
             if (!valid) null else list.firstOrNull { it.userId == s!!.userId }?.toDomain()
         }
+
+    /**
+     * Every stored user, with no session filter applied.
+     *
+     * OfflineFirstRepository needs this because it resolves "who is signed in" from the
+     * PERSISTED session, not from this class's RAM mock — combining the table with its own
+     * stale session here would always yield null.
+     */
+    override fun observeAllUsers(): Flow<List<User>> =
+        users.observeAll().map { list -> list.map { it.toDomain() } }
 
     // --- users ---------------------------------------------------------------
 
@@ -167,15 +183,43 @@ class RoomRepository(private val db: AppDatabase) : Repository {
     override fun observeBalance(sellerId: String, customerId: String): Flow<Long> =
         transactions.observeBalance(sellerId, customerId)
 
+    /**
+     * Books a ledger entry AND queues it for the server, atomically.
+     *
+     * The two have to happen together or not at all. Written separately, a process death
+     * in between leaves either an entry the server will never hear about, or a queued send
+     * for an entry that was never booked — and neither is detectable afterwards.
+     * withTransaction makes the pair a single unit: the database either has both rows or
+     * neither.
+     *
+     * The queue row carries the request body, not a reference to the ledger row. The
+     * server must receive exactly what was agreed at approval time, so a later local edit
+     * (there are none today — the ledger is append-only — but the outbox should not depend
+     * on that) cannot change what gets sent.
+     */
     override suspend fun addTransaction(transaction: Transaction, orderBody: OrderBody?) {
-        // When a basket rode along on the handoff, persist it first and link the entry;
-        // a money-only entry links no basket (basketId = null).
-        val basketId = orderBody?.let { ob ->
-            baskets.insertBasket(ob.toBasketEntity(transaction.createdAt))
-            baskets.insertItems(ob.toItemEntities())
-            ob.basketId
+        db.withTransaction {
+            // When a basket rode along on the handoff, persist it first and link the entry;
+            // a money-only entry links no basket (basketId = null).
+            val basketId = orderBody?.let { ob ->
+                baskets.insertBasket(ob.toBasketEntity(transaction.createdAt))
+                baskets.insertItems(ob.toItemEntities())
+                ob.basketId
+            }
+            transactions.insert(transaction.toEntity(basketId))
+            outbox.insert(
+                OutboxEntity(
+                    // The transaction id IS the queue id, which is what makes enqueueing
+                    // idempotent (see OutboxDao.insert) and matches the Idempotency-Key the
+                    // send will carry.
+                    id = transaction.transactionId,
+                    transactionId = transaction.transactionId,
+                    payload = payloadJson.toJson(transaction.toCreateDto(orderBody)),
+                    createdAt = transaction.createdAt,
+                    retryCount = 0
+                )
+            )
         }
-        transactions.insert(transaction.toEntity(basketId))
     }
 
     // --- helpers -------------------------------------------------------------

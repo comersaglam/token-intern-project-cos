@@ -14,12 +14,14 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.navGraphViewModels
 import com.example.app_pos.MainActivity
 import com.example.app_pos.R
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
 import com.example.app_pos.databinding.FragmentOtpBinding
 import com.example.app_pos.model.ClaimStatus
 import com.example.app_pos.model.TransactionType
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Customer-approval step. Requests an OTP on entry and, once the merchant enters
@@ -27,6 +29,7 @@ import kotlinx.coroutines.launch
  * gate that stops the merchant booking anything without the customer's approval.
  * Verification is mocked (any code) until the backend lands.
  */
+@AndroidEntryPoint
 class OtpFragment : Fragment() {
 
     private var _binding: FragmentOtpBinding? = null
@@ -34,7 +37,7 @@ class OtpFragment : Fragment() {
 
     private val saleViewModel: SaleViewModel by navGraphViewModels(R.id.saleFlow)
     private val viewModel: OtpViewModel by viewModels()
-    private val repo = RepositoryProvider.instance
+    @Inject lateinit var repo: Repository
 
     // Whether the customer has the app: routes app-push vs SMS (both mocked). Resolved
     // once (the lookup is a suspend DB read now) and cached; a new customer has no app.

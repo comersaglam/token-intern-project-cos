@@ -15,12 +15,14 @@ import com.example.app_pos.R
 import com.example.app_pos.databinding.FragmentProfileBinding
 import com.example.app_pos.model.User
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * "Profil" tab: the signed-in merchant's own account, read-only (editing is on
  * app-mobile). Renders two states — NotPaired (offer to pair this terminal) and
  * Ready (paired) — plus logout. The login gate means there is no logged-out case.
  */
+@AndroidEntryPoint
 class ProfileFragment : Fragment() {
 
     private var _binding: FragmentProfileBinding? = null

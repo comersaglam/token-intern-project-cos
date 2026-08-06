@@ -2,7 +2,9 @@ package com.example.app_pos.ui.sale
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import com.example.app_pos.model.Customer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,9 +28,10 @@ import kotlinx.coroutines.flow.stateIn
  * is given.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class CustomerSelectViewModel : ViewModel() {
-
-    private val repo = RepositoryProvider.instance
+@HiltViewModel
+class CustomerSelectViewModel @Inject constructor(
+    private val repo: Repository
+) : ViewModel() {
     private val _query = MutableStateFlow("")
 
     /** The raw query, so the screen can tell "not searched yet" from "no hits". */

@@ -19,10 +19,12 @@ import com.example.app_pos.R
 import com.example.app_pos.databinding.FragmentCustomerDetailBinding
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Third screen: one customer's ledger history and current balance.
  */
+@AndroidEntryPoint
 class CustomerDetailFragment : Fragment() {
 
     private var _binding: FragmentCustomerDetailBinding? = null
@@ -31,15 +33,9 @@ class CustomerDetailFragment : Fragment() {
     // Safe Args reads the typed arguments declared in nav_graph.xml.
     private val args: CustomerDetailFragmentArgs by navArgs()
 
-    // This ViewModel needs a constructor argument, so the default factory
-    // cannot build it — we supply one that knows how.
-    private val viewModel: CustomerDetailViewModel by viewModels {
-        object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                CustomerDetailViewModel(args.customerId) as T
-        }
-    }
+    // No factory: Hilt builds the ViewModel and hands it the customerId through the
+    // SavedStateHandle, which Navigation populates from this destination's arguments.
+    private val viewModel: CustomerDetailViewModel by viewModels()
 
     private val adapter = TransactionAdapter()
 

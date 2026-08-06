@@ -20,6 +20,7 @@ import com.example.app_pos.model.Customer
 import com.example.app_pos.ui.dashboard.customers.CustomerAdapter
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Step 2 of the sale flow: choose the customer a credit entry is written to.
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
  *     (QR/NFC, FAZ 8); mocked for now.
  *   • search by name — the fallback when the customer has no app on them.
  */
+@AndroidEntryPoint
 class CustomerSelectFragment : Fragment() {
 
     private var _binding: FragmentCustomerSelectBinding? = null

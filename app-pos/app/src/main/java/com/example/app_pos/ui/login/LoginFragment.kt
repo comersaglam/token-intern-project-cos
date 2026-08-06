@@ -14,6 +14,7 @@ import com.example.app_pos.MainActivity
 import com.example.app_pos.R
 import com.example.app_pos.databinding.FragmentLoginBinding
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * The login gate — the app's start destination. The merchant cannot reach the
@@ -22,6 +23,7 @@ import kotlinx.coroutines.launch
  * Mock for now: the button signs in regardless of the phone field. Real login
  * later adds an OTP step; this same screen stays, driven by LoginViewModel.state.
  */
+@AndroidEntryPoint
 class LoginFragment : Fragment() {
 
     private var _binding: FragmentLoginBinding? = null

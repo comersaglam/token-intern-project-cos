@@ -10,13 +10,15 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.navigation.navGraphViewModels
 import com.example.app_pos.R
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
 import com.example.app_pos.databinding.FragmentPhoneBinding
 import com.example.app_pos.model.Customer
 import com.example.app_pos.model.CustomerLookup
 import com.example.app_pos.util.PhoneFormat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * New-customer step: capture name + phone, then continue to confirm.
@@ -26,6 +28,7 @@ import kotlinx.coroutines.launch
  * the same number. Only reached for a brand-new customer; picking an existing one
  * goes straight to confirm.
  */
+@AndroidEntryPoint
 class PhoneFragment : Fragment() {
 
     private var _binding: FragmentPhoneBinding? = null
@@ -33,7 +36,7 @@ class PhoneFragment : Fragment() {
 
     private val args: PhoneFragmentArgs by navArgs()
     private val saleViewModel: SaleViewModel by navGraphViewModels(R.id.saleFlow)
-    private val repo = RepositoryProvider.instance
+    @Inject lateinit var repo: Repository
 
     override fun onCreateView(
         inflater: LayoutInflater,

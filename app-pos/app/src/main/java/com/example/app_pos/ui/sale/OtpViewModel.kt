@@ -3,7 +3,9 @@ package com.example.app_pos.ui.sale
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.app_pos.data.OtpService
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import com.example.app_pos.model.OrderBody
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
@@ -28,9 +30,10 @@ enum class OtpStatus { SENDING, READY, VERIFYING, DONE, ERROR }
  * new customer it creates the record first (addCustomer), then writes the entry.
  * A UUID transactionId keeps a retry from applying the same entry twice.
  */
-class OtpViewModel : ViewModel() {
-
-    private val repo = RepositoryProvider.instance
+@HiltViewModel
+class OtpViewModel @Inject constructor(
+    private val repo: Repository
+) : ViewModel() {
     private val _status = MutableStateFlow(OtpStatus.SENDING)
     val status: StateFlow<OtpStatus> = _status.asStateFlow()
 

@@ -2,7 +2,8 @@ package com.example.app_pos.ui.dashboard.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.RepositoryProvider
+import androidx.lifecycle.SavedStateHandle
+import com.example.app_pos.model.Repository
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 /** Which ledger entries the history should show. */
 enum class TransactionFilter { ALL, DEBT, PAYMENT }
@@ -27,9 +30,18 @@ enum class TransactionFilter { ALL, DEBT, PAYMENT }
  * stored field — so the append-only rule holds on every screen.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class CustomerDetailViewModel(customerId: String) : ViewModel() {
+@HiltViewModel
+class CustomerDetailViewModel @Inject constructor(
+    private val repo: Repository,
+    savedStateHandle: SavedStateHandle
+) : ViewModel() {
 
-    private val repo = RepositoryProvider.instance
+    // Navigation puts the destination's arguments into the SavedStateHandle under their
+    // declared names, so the nav arg arrives without a hand-written factory — and survives
+    // process death, which the factory's captured value did not.
+    private val customerId: String = checkNotNull(savedStateHandle["customerId"]) {
+        "customerDetailFragment requires a customerId argument"
+    }
 
     // The customer's phone: identity for the pay flow and how the merchant tells two
     // same-named customers apart. Looked up once (a suspend DB read) and exposed as a

@@ -2,7 +2,7 @@ package com.example.app_pos.ui.sale
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
 import com.example.app_pos.model.TransactionType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,9 +24,10 @@ import kotlinx.coroutines.flow.stateIn
  * the balance is treated as zero in that case.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ConfirmViewModel(private val customerId: String) : ViewModel() {
-
-    private val repo = RepositoryProvider.instance
+class ConfirmViewModel(
+    private val repo: Repository,
+    private val customerId: String
+) : ViewModel() {
 
     /** The customer's current balance with the signed-in seller; 0 if new. */
     val currentBalanceMinor: StateFlow<Long> =

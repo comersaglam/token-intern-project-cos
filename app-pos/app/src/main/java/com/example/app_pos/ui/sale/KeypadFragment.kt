@@ -17,6 +17,7 @@ import com.example.app_pos.databinding.FragmentKeypadBinding
 import com.example.app_pos.model.TransactionType
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * First screen of the in-app PAYMENT flow: key in the amount the customer is
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
  * The keypad logic lives in the flow-scoped SaleViewModel, so the amount is
  * already in place for the confirm step without any hand-off.
  */
+@AndroidEntryPoint
 class KeypadFragment : Fragment() {
 
     private var _binding: FragmentKeypadBinding? = null

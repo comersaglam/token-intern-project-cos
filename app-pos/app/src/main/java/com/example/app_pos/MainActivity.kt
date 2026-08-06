@@ -12,9 +12,11 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.example.app_pos.data.OrderBodyParser
-import com.example.app_pos.data.RepositoryProvider
 import com.example.app_pos.databinding.ActivityMainBinding
+import com.example.app_pos.model.Repository
 import com.example.app_pos.ui.dashboard.DashboardFragment
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * The app's only Activity. Every screen is a Fragment inside the nav host.
@@ -26,11 +28,19 @@ import com.example.app_pos.ui.dashboard.DashboardFragment
  *    sale flow with the handed-over amount, and finishes back to the payment app
  *    once the veresiye entry is done (handoff mode).
  */
+@AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var appBarConfiguration: AppBarConfiguration
-    private val repo = RepositoryProvider.instance
+
+    /**
+     * Injected rather than fetched from a static holder, so the session it reports comes
+     * from the persisted store. Hilt fills this during super.onCreate(), which is before
+     * the start-destination read below and before any onNewIntent — so both handoff paths
+     * see a ready repository.
+     */
+    @Inject lateinit var repo: Repository
 
     /** True when opened from the payment app; drives the finish-back behaviour. */
     private var isCreditHandoff = false

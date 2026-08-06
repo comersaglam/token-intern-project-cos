@@ -17,6 +17,7 @@ import com.example.app_pos.databinding.FragmentCustomersBinding
 import com.example.app_pos.model.Customer
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Dashboard's first tab: who owes what, and how much in total.
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
  * management view into the moment of a sale. It now belongs to the dashboard
  * only — hence no SaleViewModel and no "amount to be charged" line here.
  */
+@AndroidEntryPoint
 class CustomersFragment : Fragment() {
 
     private var _binding: FragmentCustomersBinding? = null

@@ -14,6 +14,7 @@ import androidx.navigation.fragment.findNavController
 import com.example.app_pos.R
 import com.example.app_pos.databinding.FragmentPairingBinding
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Mock pairing confirm screen (modelled on OtpFragment). The button pairs the
@@ -23,6 +24,7 @@ import kotlinx.coroutines.launch
  * ViewModel scope, which does not exist here, so calling it would crash. Ordinary
  * Back (handled by the dashboard's inner nav) is enough.
  */
+@AndroidEntryPoint
 class PairingFragment : Fragment() {
 
     private var _binding: FragmentPairingBinding? = null

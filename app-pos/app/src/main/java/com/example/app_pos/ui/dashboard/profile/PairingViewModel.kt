@@ -2,7 +2,9 @@ package com.example.app_pos.ui.dashboard.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,9 +22,10 @@ enum class PairingStatus { IDLE, PAIRING, DONE, ERROR }
  * handshake; the flag write (repo.pairWithApp) and this screen stay.
  * No separate PairingService — a one-step mock does not need its own data object.
  */
-class PairingViewModel : ViewModel() {
-
-    private val repo = RepositoryProvider.instance
+@HiltViewModel
+class PairingViewModel @Inject constructor(
+    private val repo: Repository
+) : ViewModel() {
     private val _status = MutableStateFlow(PairingStatus.IDLE)
     val status: StateFlow<PairingStatus> = _status.asStateFlow()
 

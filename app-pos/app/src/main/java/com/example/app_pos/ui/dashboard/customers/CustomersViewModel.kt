@@ -2,7 +2,9 @@ package com.example.app_pos.ui.dashboard.customers
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.app_pos.data.RepositoryProvider
+import com.example.app_pos.model.Repository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import com.example.app_pos.model.Customer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,9 +28,10 @@ enum class CustomerFilter { ALL, WITH_DEBT }
  * a pure renderer and this logic stays unit-testable without Android.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class CustomersViewModel : ViewModel() {
-
-    private val repo = RepositoryProvider.instance
+@HiltViewModel
+class CustomersViewModel @Inject constructor(
+    private val repo: Repository
+) : ViewModel() {
     private val query = MutableStateFlow("")
     private val filter = MutableStateFlow(CustomerFilter.ALL)
 

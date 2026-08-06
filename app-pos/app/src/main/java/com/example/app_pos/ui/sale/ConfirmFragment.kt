@@ -15,9 +15,12 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.navGraphViewModels
 import com.example.app_pos.R
 import com.example.app_pos.databinding.FragmentConfirmBinding
+import com.example.app_pos.model.Repository
 import com.example.app_pos.model.TransactionType
 import com.example.app_pos.util.toTlString
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Summary step of the sale flow: shows who, how much, and the resulting balance
@@ -25,6 +28,7 @@ import kotlinx.coroutines.launch
  * OTP approval. The actual write happens only after the customer approves (see
  * OtpFragment) — the merchant cannot book anything unilaterally.
  */
+@AndroidEntryPoint
 class ConfirmFragment : Fragment() {
 
     private var _binding: FragmentConfirmBinding? = null
@@ -32,14 +36,26 @@ class ConfirmFragment : Fragment() {
 
     private val saleViewModel: SaleViewModel by navGraphViewModels(R.id.saleFlow)
 
-    // A new customer has no id yet (created at write time), so pass empty and the
-    // balance is treated as zero.
+    /**
+     * The one ViewModel Hilt does not build.
+     *
+     * Its customerId comes from ANOTHER ViewModel's runtime state, not from a navigation
+     * argument, so a SavedStateHandle cannot supply it — @HiltViewModel has no way to
+     * express "read this from the sale flow's shared state at construction time". The
+     * factory stays, and Hilt contributes only the repository, which it injects into the
+     * fragment below. Hilt-built and hand-built ViewModels coexist without friction.
+     *
+     * A new customer has no id yet (created at write time), so pass empty and the balance
+     * is treated as zero.
+     */
+    @Inject lateinit var repo: Repository
+
     private val viewModel: ConfirmViewModel by viewModels {
         val customerId = saleViewModel.selectedCustomer.value?.customerId.orEmpty()
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                ConfirmViewModel(customerId) as T
+                ConfirmViewModel(repo, customerId) as T
         }
     }
 

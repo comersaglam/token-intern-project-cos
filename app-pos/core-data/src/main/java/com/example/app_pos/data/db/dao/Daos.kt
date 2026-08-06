@@ -171,11 +171,43 @@ interface ApprovalDao {
 // insert/select bodies so the surface exists; no read is wired into the UI yet.
 // ---------------------------------------------------------------------------
 
+/**
+ * The offline sync queue: one row per write that still has to reach the server.
+ *
+ * No longer a skeleton — RoomLocalDataSource enqueues here inside the same database
+ * transaction as the ledger insert, and SyncEngine drains it.
+ */
 @Dao
 interface OutboxDao {
-    @Insert suspend fun insert(entry: OutboxEntity)
-    @Query("SELECT * FROM outbox ORDER BY createdAt") suspend fun all(): List<OutboxEntity>
-    @Query("DELETE FROM outbox WHERE id = :id") suspend fun delete(id: String)
+
+    /**
+     * IGNORE, not the default ABORT. The row's id is the transaction id, so re-enqueueing
+     * an entry that is already queued is a no-op instead of an exception — which is what
+     * a replayed write (a retry, a resumed handoff) does. With ABORT the drain would throw
+     * exactly when the queue was doing its job.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(entry: OutboxEntity)
+
+    /** Oldest first: the ledger is a story, and it should reach the server in order. */
+    @Query("SELECT * FROM outbox ORDER BY createdAt")
+    suspend fun all(): List<OutboxEntity>
+
+    /** How many writes are still unsent — drives a "not synced yet" indicator later. */
+    @Query("SELECT COUNT(*) FROM outbox")
+    fun observeCount(): Flow<Int>
+
+    /** Called once a write is accepted (or permanently refused). */
+    @Query("DELETE FROM outbox WHERE id = :id")
+    suspend fun delete(id: String)
+
+    /**
+     * Records a failed attempt. Kept separate from delete so a retryable failure leaves a
+     * trail: a row whose retryCount keeps climbing is how a poison entry becomes visible
+     * instead of silently cycling forever.
+     */
+    @Query("UPDATE outbox SET retryCount = retryCount + 1 WHERE id = :id")
+    suspend fun recordFailure(id: String)
 }
 
 @Dao
