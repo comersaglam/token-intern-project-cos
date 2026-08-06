@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 
 /** Where the OTP step is in its request → verify → write lifecycle. */
@@ -86,7 +87,7 @@ class OtpViewModel : ViewModel() {
                     amountMinor = amountMinor,
                     type = type,
                     description = descriptionFor(type),
-                    createdAt = CREATED_AT_FORMAT.format(Date())
+                    createdAt = createdAtFormat().format(Date())
                 ),
                 orderBody = orderBody
             )
@@ -102,7 +103,13 @@ class OtpViewModel : ViewModel() {
         }
 
     private companion object {
-        // Matches the seed data's display format; ISO-8601 comes in phase 2.
-        val CREATED_AT_FORMAT = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR"))
+        /**
+         * ISO-8601 UTC — the format the wire contract uses and the DAOs sort on. A new
+         * formatter per call because SimpleDateFormat is not thread-safe.
+         */
+        fun createdAtFormat(): SimpleDateFormat =
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ROOT).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
     }
 }

@@ -27,5 +27,5 @@ data class Transaction(
     val amountMinor: Long,           // in minor units (kuruş), always POSITIVE; type carries the sign
     val type: TransactionType,
     val description: String,         // "bread, milk" / "cash payment"
-    val createdAt: String            // "23.07.2026 14:30" for now (ISO-8601 in phase 2)
+    val createdAt: String            // ISO-8601 UTC, e.g. "2026-07-23T11:30:00Z"
 )

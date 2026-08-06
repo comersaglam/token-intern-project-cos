@@ -27,16 +27,10 @@ import kotlinx.coroutines.flow.Flow
  * are computed with SUM queries, never stored.
  */
 
-/**
- * A sortable key built from createdAt, which is stored as "dd.MM.yyyy HH:mm".
- *
- * Sorting that string directly compares the DAY first, so 05.08.2026 would rank below
- * 20.07.2026 — an entry written in a new month sinks to the bottom of the history.
- * Rebuilding it as yyyyMMdd+time makes the comparison chronological. Collapses to a
- * plain ORDER BY createdAt once timestamps become ISO-8601 (phase 2).
- */
-private const val CREATED_AT_SORT =
-    "substr(createdAt,7,4) || substr(createdAt,4,2) || substr(createdAt,1,2) || substr(createdAt,12)"
+// createdAt is ISO-8601 UTC ("2026-07-20T09:15:00Z"), which sorts chronologically as
+// plain text — most significant field first. That is why these queries can ORDER BY the
+// column directly; the earlier "dd.MM.yyyy HH:mm" format needed a substr rebuild because
+// it compared the day before the year.
 
 @Dao
 interface UserDao {
@@ -117,11 +111,11 @@ interface TransactionDao {
 
     @Query(
         "SELECT * FROM transactions WHERE sellerId = :sellerId AND customerId = :customerId " +
-            "ORDER BY $CREATED_AT_SORT DESC"
+            "ORDER BY createdAt DESC"
     )
     fun observeForSellerCustomer(sellerId: String, customerId: String): Flow<List<TransactionEntity>>
 
-    @Query("SELECT * FROM transactions WHERE customerId = :customerId ORDER BY $CREATED_AT_SORT DESC")
+    @Query("SELECT * FROM transactions WHERE customerId = :customerId ORDER BY createdAt DESC")
     fun observeForCustomer(customerId: String): Flow<List<TransactionEntity>>
 
     @Query("SELECT * FROM transactions")

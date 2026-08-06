@@ -199,11 +199,22 @@ class RoomRepository(private val db: AppDatabase) : Repository {
         }
     }
 
-    private fun nowStamp(): String =
-        java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.forLanguageTag("tr-TR"))
-            .format(java.util.Date())
+    // ISO-8601 UTC, the format the wire contract uses and the one the DAOs sort on.
+    // SimpleDateFormat rather than java.time because minSdk is 24 and core library
+    // desugaring is deliberately not enabled (see the module build file).
+    private fun nowStamp(): String = isoFormat().format(java.util.Date())
 
     private companion object {
         const val SESSION_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
+
+        /**
+         * A new formatter per call: SimpleDateFormat is not thread-safe and writes here
+         * arrive on whichever coroutine dispatcher the caller used. Locale.ROOT keeps the
+         * digits ASCII regardless of the device locale.
+         */
+        fun isoFormat(): java.text.SimpleDateFormat =
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.ROOT).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
     }
 }

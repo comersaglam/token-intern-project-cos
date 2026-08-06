@@ -47,7 +47,10 @@ import com.example.app_pos.data.db.entity.UserEntity
         AuditLogEntity::class,
         DeviceEntity::class
     ],
-    version = 1,
+    // v2: createdAt switched from "dd.MM.yyyy HH:mm" to ISO-8601 UTC. The column type is
+    // unchanged, but stored values are not comparable across the two formats, so the
+    // destructive fallback rebuilds the seeded database rather than migrating it.
+    version = 2,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

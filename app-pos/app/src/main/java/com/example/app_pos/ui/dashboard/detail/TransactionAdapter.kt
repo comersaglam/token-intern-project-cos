@@ -9,6 +9,7 @@ import com.example.app_pos.R
 import com.example.app_pos.databinding.ItemTransactionBinding
 import com.example.app_pos.model.Transaction
 import com.example.app_pos.model.TransactionType
+import com.example.app_pos.util.toDisplayDateTime
 import com.example.app_pos.util.toTlString
 
 /** Renders the ledger entries of a single customer, newest first. */
@@ -21,7 +22,8 @@ class TransactionAdapter :
 
         fun bind(transaction: Transaction) = with(binding) {
             txDescription.text = transaction.description
-            txDate.text = transaction.createdAt
+            // Stored as ISO-8601 UTC; shown in the device's time zone.
+            txDate.text = transaction.createdAt.toDisplayDateTime()
 
             // The stored amount is always positive; the sign shown comes from
             // the entry type, mirroring how the balance is summed.

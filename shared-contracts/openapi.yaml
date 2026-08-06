@@ -85,6 +85,35 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a fresh session
+      description: |
+        Keeps app-pos signed in silently. The POS terminal is a fixed, single-user
+        device, so asking the shopkeeper to re-enter a code whenever the access token
+        expires is friction the auth design exists to avoid (architecture-pos.md §5).
+
+        The client sends this only after a 401, retries the failed request once with
+        the new token, and gives up (dropping to the sign-in gate) if the refresh also
+        fails. No bearer token is required — the refresh token IS the credential.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Refresh' }
+      responses:
+        '200':
+          description: Renewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401':
+          description: Refresh token invalid or expired — sign in again
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /auth/logout:
     post:
       tags: [auth]
@@ -510,11 +539,25 @@ components:
       properties:
         phone: { type: string, example: '+905554443322' }
         code: { type: string, example: '123456' }
+    Refresh:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
     Session:
       type: object
       required: [token, expires_at, user]
       properties:
-        token: { type: string }
+        token:
+          type: string
+          description: Short-lived access token, sent as the bearer on every request.
+        refresh_token:
+          type: string
+          nullable: true
+          description: |
+            Long-lived; renews the session without a new OTP. Optional so a deployment
+            that issues only an access token still satisfies this schema — the client
+            then simply cannot refresh and falls back to the sign-in gate.
         expires_at: { type: string, format: date-time }
         user: { $ref: '#/components/schemas/User' }
 

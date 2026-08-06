@@ -23,8 +23,28 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 internal class SeedCallback(private val context: Context) : RoomDatabase.Callback() {
 
-    override fun onCreate(db: SupportSQLiteDatabase) {
-        super.onCreate(db)
+    /**
+     * Seeds on the first open of an empty database — whether it was just created or was
+     * emptied by a destructive migration (every version bump of the mock phase drops and
+     * recreates the tables, and the demo data is still wanted afterwards).
+     *
+     * onOpen rather than onCreate/onDestructiveMigration because BOTH of those fire while
+     * the schema is still being built, so inserting from them fails with "no such table".
+     * By onOpen the tables exist; the emptiness check keeps the seed a one-off instead of
+     * something that runs on every launch.
+     */
+    override fun onOpen(db: SupportSQLiteDatabase) {
+        super.onOpen(db)
+        if (isEmpty(db)) seed(db)
+    }
+
+    /** True when no user row exists — the marker that this database was never seeded. */
+    private fun isEmpty(db: SupportSQLiteDatabase): Boolean =
+        db.query("SELECT COUNT(*) FROM users").use { cursor ->
+            !cursor.moveToFirst() || cursor.getInt(0) == 0
+        }
+
+    private fun seed(db: SupportSQLiteDatabase) {
 
         // Two shopkeepers (both also buyers — one account, two roles). A person's name
         // and their shop's name are deliberately DIFFERENT: buyer-facing screens show

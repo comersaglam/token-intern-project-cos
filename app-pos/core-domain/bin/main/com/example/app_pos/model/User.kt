@@ -22,7 +22,7 @@ data class User(
     val isSeller: Boolean,       // "Become a seller" sets this; both roles can be active
     val email: String?,          // optional profile field (filled in on app-mobile)
     val sellerInfo: SellerInfo?, // null while isSeller == false; non-null once a seller
-    val createdAt: String        // same string format as Transaction: "dd.MM.yyyy HH:mm"
+    val createdAt: String        // same format as Transaction: ISO-8601 UTC
 )
 
 /**
